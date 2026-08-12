@@ -1,6 +1,6 @@
 import { App, Notice } from 'obsidian';
 import { type RoomKeys } from '../crypto';
-import { ensureParentDirsExist, writeBinaryFile } from '../vaultFs';
+import { ensureParentDirsExist, writeBinaryFile, deleteLocalFile } from '../vaultFs';
 import { toWireRelPath, toVaultRelPath, shouldIgnore } from '../syncPaths';
 import { SyncTransport } from './syncTransport';
 import { resolveMarkdownConflict } from './mergeMarkdown';
@@ -62,7 +62,7 @@ export class ConfigSyncEngine {
   public async deleteRemoteFile(vaultRelPath: string) {
     if (shouldIgnore(vaultRelPath)) return;
     try {
-      await this.transport.deleteRemoteFile(toWireRelPath(this.sharedFolder, vaultRelPath));
+      await this.transport.deleteRemoteFile(toWireRelPath(this.sharedFolder, vaultRelPath), Date.now());
     } catch (e) {
       console.warn(`[LANote] Failed to delete remote file ${vaultRelPath}:`, e);
     }
@@ -102,7 +102,10 @@ export class ConfigSyncEngine {
     if (!silent) new Notice('Syncing shared folder...', 2000);
 
     try {
-      const remoteManifest = await this.transport.getRemoteManifest();
+      const [remoteManifest, tombstones] = await Promise.all([
+        this.transport.getRemoteManifest(),
+        this.transport.getRemoteTombstones(),
+      ]);
       const localFiles: { path: string, stat: any }[] = [];
 
       const scanRoot = this.sharedFolder.replace(/\/+$/, '');
@@ -142,6 +145,19 @@ export class ConfigSyncEngine {
         const vaultRelPath = toVaultRelPath(this.sharedFolder, wireRelPath);
 
         if (local && !remote) {
+          // A tombstone means a peer already deleted this path; treat this
+          // copy as a stale leftover (not a new upload) unless it was
+          // touched after the deletion, in which case it's a recreation.
+          const deletedAt = tombstones[wireRelPath];
+          const isStaleDeletion = deletedAt !== undefined && local.stat.mtime <= deletedAt + 2000;
+
+          if (isStaleDeletion) {
+            if (getActiveLivePaths().has(wireRelPath)) continue; // don't yank an open file out from under the editor
+            await deleteLocalFile(this.app, vaultRelPath);
+            actionsCount++;
+            continue;
+          }
+
           // File exists only locally -> Upload. Not skipped for
           // activeLivePaths: a live-collab session never touches the file-
           // body manifest itself (only the room-state CRDT snapshot), so

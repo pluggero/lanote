@@ -47,3 +47,9 @@ def verifier_path(room_dir: Path) -> Path:
 def room_state_path(room_dir: Path, rel: Path) -> Path:
     safe_name = base64.urlsafe_b64encode(rel.as_posix().encode()).decode().rstrip("=")
     return room_dir / "roomstate" / f"{safe_name}.bin"
+
+
+def tombstones_path(room_dir: Path) -> Path:
+    """Deliberately outside files/ and roomstate/ so it's never picked up by
+    the manifest's rglob or treated as a syncable file."""
+    return room_dir / "tombstones.json"

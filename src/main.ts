@@ -9,7 +9,7 @@ import {
   createRoom, startSharing, stopSharing, deleteHostedRoom, renewRoomId,
   joinRoom, leaveRoom, reconstructDatabase,
 } from './room/roomActions';
-import { syncFile, cleanupClosedFiles, reconnectAll, getDiskSyncDebouncer, handleFileRename } from './collab/collabSession';
+import { syncFile, cleanupClosedFiles, reconnectAll, getDiskSyncDebouncer, handleFileRename, abandonActiveSync } from './collab/collabSession';
 import { detachStaleEditorBinding, collabCompartment } from './collab/editorBinding';
 import { updateStatusBar } from './collab/statusBar';
 import { toggleSimulator } from './collab/simulator';
@@ -119,6 +119,7 @@ export default class LANotePlugin extends Plugin {
     }));
     this.registerEvent(this.app.vault.on('delete', (file) => {
       if (file instanceof TFile) {
+        abandonActiveSync(this, file.path);
         const match = findHostedOrJoinedRoomForPath(this, file.path);
         if (match) {
           this.roomRuntimes.get(match.room.id)?.configSyncEngine.deleteRemoteFile(file.path);

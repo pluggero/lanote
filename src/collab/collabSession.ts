@@ -39,6 +39,22 @@ export function cleanupClosedFiles(plugin: LANotePlugin) {
   updateStatusBar(plugin);
 }
 
+/**
+ * Tears down path's active session (if any) because its file is gone, not
+ * just closed -- unlike cleanupClosedFiles/reconnectAll, skips the final
+ * flush (disconnectGracefully's flushSnapshot) since flushing here would
+ * re-upload the deleted file's content and undo the deletion.
+ */
+export function abandonActiveSync(plugin: LANotePlugin, path: string): void {
+  const sync = plugin.activeSyncs.get(path);
+  if (!sync) return;
+  const t = plugin.retryTimeouts.get(path);
+  if (t) { clearTimeout(t); plugin.retryTimeouts.delete(path); }
+  plugin.activeSyncs.delete(path);
+  plugin.diskDebouncers.delete(path);
+  disconnectGracefully(sync, { flush: false }).then(() => { disposeSyncSession(sync); sync.doc.destroy(); });
+}
+
 export function reconnectAll(plugin: LANotePlugin) {
   // Clear all retry timers
   for (const timeout of plugin.retryTimeouts.values()) clearTimeout(timeout);
