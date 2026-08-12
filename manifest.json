@@ -1,0 +1,10 @@
+{
+  "id": "lanote",
+  "name": "LANote",
+  "version": "0.1.0",
+  "minAppVersion": "1.4.0",
+  "description": "Real-time collaborative note sync over your local network, with a zero-knowledge server that never sees your plaintext data.",
+  "author": "pluggero",
+  "authorUrl": "https://github.com/pluggero",
+  "isDesktopOnly": false
+}

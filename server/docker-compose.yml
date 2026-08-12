@@ -1,0 +1,14 @@
+name: lanote
+
+services:
+  lanote-server:
+    build:
+      context: .
+    ports:
+      # Bound to localhost only by default -- edit to "4444:4444" (or a
+      # specific interface IP) if you want other devices on the LAN to
+      # reach this server directly.
+      - "127.0.0.1:4444:4444"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

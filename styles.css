@@ -1,0 +1,139 @@
+/* LANote settings tab styling. Uses Obsidian's CSS custom properties so it
+   matches the active theme automatically. */
+
+.lanote-subtitle {
+  margin: 0 0 20px 0;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+.lanote-section-header {
+  margin-top: 24px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 6px;
+  font-size: 1.05em;
+}
+
+.lanote-banner {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 20px;
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.lanote-empty-state {
+  padding: 14px 16px;
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: var(--font-ui-small);
+  background: var(--background-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.lanote-room-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.lanote-room-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+}
+
+.lanote-room-item-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.lanote-room-folder {
+  font-weight: 600;
+}
+
+.lanote-room-code-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.lanote-room-code {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.lanote-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--font-ui-smaller);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.lanote-badge-sharing,
+.lanote-badge-connected {
+  background: color-mix(in srgb, var(--color-green) 20%, transparent);
+  color: var(--color-green);
+}
+
+.lanote-badge-stopped,
+.lanote-badge-disconnected {
+  background: color-mix(in srgb, var(--text-muted) 15%, transparent);
+  color: var(--text-muted);
+}
+
+.lanote-badge-connecting {
+  background: color-mix(in srgb, var(--color-yellow) 20%, transparent);
+  color: var(--color-yellow);
+}
+
+.lanote-peer-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.lanote-peer-empty {
+  font-style: italic;
+}
+
+.lanote-peer-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 4px currentColor;
+}
+
+.lanote-room-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.lanote-modal-desc {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
