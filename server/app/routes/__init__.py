@@ -7,6 +7,7 @@ from app.routes.files import (
     handle_delete_room,
     handle_download,
     handle_manifest,
+    handle_tombstones,
     handle_upload,
 )
 from app.routes.room_state import (
@@ -21,6 +22,7 @@ from app.routes.websocket import handle_ws
 def register_routes(app: web.Application) -> None:
     app.router.add_get("/", handle_status)
     app.router.add_get("/api/manifest", handle_manifest)
+    app.router.add_get("/api/tombstones", handle_tombstones)
     app.router.add_post("/api/upload", handle_upload)
     app.router.add_get("/api/download", handle_download)
     app.router.add_delete("/api/delete", handle_delete)

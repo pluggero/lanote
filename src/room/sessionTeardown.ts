@@ -13,8 +13,8 @@ import type { SyncSession } from '../types';
  * encrypt step, so closing immediately after setLocalState(null) risks
  * the socket closing before that message is even transmitted.
  */
-export async function disconnectGracefully(sync: { awareness: Awareness, provider?: WebsocketProvider, flushSnapshot?: () => void }): Promise<void> {
-  sync.flushSnapshot?.();
+export async function disconnectGracefully(sync: { awareness: Awareness, provider?: WebsocketProvider, flushSnapshot?: () => void }, opts: { flush?: boolean } = {}): Promise<void> {
+  if (opts.flush !== false) sync.flushSnapshot?.();
   console.log('[LANote] [diag] disconnectGracefully: start, clearing awareness');
   sync.awareness.setLocalState(null);
   await new Promise(resolve => setTimeout(resolve, 100));

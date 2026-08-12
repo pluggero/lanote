@@ -80,8 +80,16 @@ export class SyncTransport {
     if (res.status !== 200) throw new Error(`Snapshot upload failed: ${res.text}`);
   }
 
-  async deleteRemoteFile(wireRelPath: string): Promise<void> {
-    const url = this.getApiUrl('/delete', { path: wireRelPath });
+  async deleteRemoteFile(wireRelPath: string, deletedAtMs: number): Promise<void> {
+    const url = this.getApiUrl('/delete', { path: wireRelPath, mtime: String(deletedAtMs) });
     await requestUrl({ url, method: 'DELETE', headers: this.authHeaders() });
+  }
+
+  /** Fetches the room's deletion records: wire-relative path -> the deleting client's Date.now() at delete time. */
+  async getRemoteTombstones(): Promise<Record<string, number>> {
+    const url = this.getApiUrl('/tombstones');
+    const res = await requestUrl({ url, method: 'GET', headers: this.authHeaders() });
+    if (res.status !== 200) throw new Error(`Server returned HTTP ${res.status}: ${res.text || 'No response body'}`);
+    return res.json as Record<string, number>;
   }
 }

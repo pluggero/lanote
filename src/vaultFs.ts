@@ -46,3 +46,14 @@ export async function ensureParentDirsExist(app: App, relPath: string): Promise<
 export async function writeBinaryFile(app: App, relPath: string, data: ArrayBuffer): Promise<void> {
   await app.vault.adapter.writeBinary(relPath, data);
 }
+
+/**
+ * Removes a file via the Vault API (trash, not the raw adapter) so Obsidian's
+ * file index/UI update immediately and the removal is recoverable from trash.
+ * Used when a background sync determines a local file is a stale leftover of
+ * a deletion that already happened elsewhere in the room.
+ */
+export async function deleteLocalFile(app: App, relPath: string): Promise<void> {
+  const file = app.vault.getAbstractFileByPath(relPath);
+  if (file) await app.vault.trash(file, true);
+}
