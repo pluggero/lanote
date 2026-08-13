@@ -2,14 +2,14 @@ import { Plugin, TFile, WorkspaceLeaf, MarkdownView, debounce } from 'obsidian';
 import { LANoteSettingTab } from './settings/SettingsTab';
 import { type LANoteSettings, type HostedRoom, type JoinedRoom, loadSettings, saveSettings } from './settingsStore';
 import type { ConnectionStatus, RoomRuntime, SyncSession } from './types';
-import { findHostedOrJoinedRoomForPath, getBackgroundSyncDebouncer, activeWireRelPathsForRoom } from './room/roomLookup';
-import { disconnectGracefully, disposeSyncSession } from './room/sessionTeardown';
+import { findHostedOrJoinedRoomForPath, getBackgroundSyncDebouncer, activeWireRelPathsForRoom, syncRoom } from './room/roomLookup';
+import { teardownSyncSession } from './room/sessionTeardown';
 import { reinitializeAllRooms } from './room/roomRuntime';
 import {
   createRoom, startSharing, stopSharing, deleteHostedRoom, renewRoomId,
   joinRoom, leaveRoom, reconstructDatabase,
 } from './room/roomActions';
-import { syncFile, cleanupClosedFiles, reconnectAll, getDiskSyncDebouncer, handleFileRename, abandonActiveSync } from './collab/collabSession';
+import { syncFile, cleanupClosedFiles, reconnectAll, getDiskSyncDebouncer, handleFileRename, abandonActiveSync, abandonAndCloseFile } from './collab/collabSession';
 import { detachStaleEditorBinding, collabCompartment } from './collab/editorBinding';
 import { updateStatusBar } from './collab/statusBar';
 import { toggleSimulator } from './collab/simulator';
@@ -157,8 +157,8 @@ export default class LANotePlugin extends Plugin {
     // best-effort: it'll complete for a normal plugin disable/reload, but a
     // hard app quit can still cut it short -- the other peers' own 30s Yjs
     // awareness timeout is the fallback for that case.
-    for (const [, sync] of this.activeSyncs.entries()) {
-      disconnectGracefully(sync).then(() => { disposeSyncSession(sync); sync.doc.destroy(); });
+    for (const [path, sync] of this.activeSyncs.entries()) {
+      teardownSyncSession(this, path, sync);
     }
     this.activeSyncs.clear();
   }
@@ -203,19 +203,18 @@ export default class LANotePlugin extends Plugin {
     return activeWireRelPathsForRoom(this, localRoomId);
   }
 
-  // Calls syncConfig() directly rather than via getBackgroundSyncDebouncer --
-  // that debouncer coalesces bursts of local file events, which a fixed-cadence
-  // tick has none of, so it'd only add its own delay on top. syncConfig()'s own
-  // isSyncing guard makes a direct call on every tick safe.
+  // Direct syncConfig() call, not getBackgroundSyncDebouncer -- a periodic tick has no burst to coalesce, and syncConfig()'s isSyncing guard already makes overlapping calls safe.
   public restartPeriodicSyncInterval(): void {
     if (this.periodicSyncIntervalId !== null) window.clearInterval(this.periodicSyncIntervalId);
     const intervalMs = clampSyncIntervalSeconds(this.settings.syncIntervalSeconds) * 1000;
     this.periodicSyncIntervalId = window.setInterval(() => {
-      for (const roomId of this.roomRuntimes.keys()) {
-        this.roomRuntimes.get(roomId)?.configSyncEngine.syncConfig(true, () => activeWireRelPathsForRoom(this, roomId));
-      }
+      for (const roomId of this.roomRuntimes.keys()) syncRoom(this, roomId, true);
     }, intervalMs);
     this.registerInterval(this.periodicSyncIntervalId);
+  }
+
+  public abandonAndCloseFile(path: string): void {
+    return abandonAndCloseFile(this, path);
   }
 
   public async reinitializeAllRooms(): Promise<void> {

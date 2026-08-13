@@ -1,6 +1,7 @@
 import { Notice, Setting } from 'obsidian';
 import type LANotePlugin from '../main';
 import type { HostedRoom } from '../settingsStore';
+import { syncRoom } from '../room/roomLookup';
 import { renderRoomListItem, type RoomListItemAction, type RoomListItemHandle } from './RoomListItem';
 import { getRoomPeers } from './roomPeers';
 import { ConfirmModal, NewRoomModal } from './modals';
@@ -99,7 +100,7 @@ function buildHostedRoomActions(plugin: LANotePlugin, room: HostedRoom, rerender
     disabled: !room.sharingActive,
     ...(room.sharingActive ? {} : { tooltip: 'Start sharing first.' }),
     onClick: async () => {
-      await plugin.roomRuntimes.get(room.id)?.configSyncEngine.syncConfig(false, () => plugin.activeWireRelPathsForRoom(room.id));
+      await syncRoom(plugin, room.id, false);
     },
   });
 

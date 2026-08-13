@@ -68,6 +68,11 @@ export class ConfigSyncEngine {
     }
   }
 
+  /** Fetches the room's deletion records, keyed by path token. */
+  public async getRemoteTombstones(): Promise<Record<string, number>> {
+    return this.transport.getRemoteTombstones();
+  }
+
   /**
    * Performs an incremental, database-free shared-folder configuration and file sync.
    * Compares the local file system manifest with the server manifest, pushing and pulling
@@ -92,8 +97,13 @@ export class ConfigSyncEngine {
    * live session never touches the file-body manifest itself, so that upload is the only
    * thing that ever makes a newly created, actively open file visible to other peers at
    * all.
+   * @param onActiveFileDeletedRemotely Called on a stale-deletion path that's still open locally, before it's deleted.
    */
-  public async syncConfig(silent: boolean = false, getActiveLivePaths: () => Set<string> = () => new Set()) {
+  public async syncConfig(
+    silent: boolean,
+    getActiveLivePaths: () => Set<string>,
+    onActiveFileDeletedRemotely: (vaultRelPath: string) => void
+  ) {
     if (this.isSyncing) {
       if (!silent) new Notice('Sync already in progress...');
       return;
@@ -154,12 +164,15 @@ export class ConfigSyncEngine {
           const isStaleDeletion = deletedAt !== undefined && local.stat.mtime <= deletedAt + 2000;
 
           if (isStaleDeletion) {
-            if (getActiveLivePaths().has(wireRelPath)) continue; // don't yank an open file out from under the editor
+            const isActive = getActiveLivePaths().has(wireRelPath);
+            console.log(`[LANote] [diag] syncConfig ${wireRelPath}: stale deletion (deletedAt=${deletedAt}, localMtime=${local.stat.mtime}, active=${isActive}) -> deleting local copy`);
+            if (isActive) onActiveFileDeletedRemotely(vaultRelPath);
             await deleteLocalFile(this.app, vaultRelPath);
             actionsCount++;
             continue;
           }
 
+          console.log(`[LANote] [diag] syncConfig ${wireRelPath}: local-only, not a stale deletion (deletedAt=${deletedAt}, localMtime=${local.stat.mtime}) -> uploading`);
           // File exists only locally -> Upload. Not skipped for
           // activeLivePaths: a live-collab session never touches the file-
           // body manifest itself (only the room-state CRDT snapshot), so
@@ -171,6 +184,7 @@ export class ConfigSyncEngine {
           await this.transport.uploadFile(wireRelPath, data, local.stat.mtime);
           actionsCount++;
         } else if (!local && remote) {
+          console.log(`[LANote] [diag] syncConfig ${wireRelPath}: remote-only -> downloading`);
           // File exists only remotely -> Download
           await ensureParentDirsExist(this.app, vaultRelPath);
           const data = await this.transport.downloadFile(wireRelPath);
@@ -201,6 +215,7 @@ export class ConfigSyncEngine {
             }
 
             if (contentsMatch) {
+              console.log(`[LANote] [diag] syncConfig ${wireRelPath}: contents match, aligning timestamps`);
               // Contents match exactly; just align the timestamps to the newest modified time
               if (local.stat.mtime > remote.mtime) {
                 await this.transport.uploadFile(wireRelPath, localData, local.stat.mtime);
@@ -209,6 +224,7 @@ export class ConfigSyncEngine {
               }
             } else {
               // Conflict: Contents are different and timestamps differ.
+              console.log(`[LANote] [diag] syncConfig ${wireRelPath}: conflict (localMtime=${local.stat.mtime}, remoteMtime=${remote.mtime})`);
               if (wireRelPath.endsWith('.md')) {
                 // ELEGANT AUTOMATIC CRDT NOTE MERGE!
                 const didAct = await resolveMarkdownConflict({

@@ -1,6 +1,7 @@
 import { Awareness } from 'y-protocols/awareness';
 import { WebsocketProvider } from 'y-websocket';
 import type { SyncSession } from '../types';
+import type LANotePlugin from '../main';
 
 /**
  * Our relay is a dumb byte pipe with no server-side Yjs (see server.py) --
@@ -44,4 +45,13 @@ export function disposeSyncSession(sync: SyncSession): void {
     undoManager.destroy();
   }
   sync.undoManagers.clear();
+}
+
+// Returns the disconnect promise (not awaited internally) so both awaiting and fire-and-forget callers work unchanged.
+export function teardownSyncSession(plugin: LANotePlugin, path: string, sync: SyncSession, opts: { flush?: boolean } = {}): Promise<void> {
+  const t = plugin.retryTimeouts.get(path);
+  if (t) { clearTimeout(t); plugin.retryTimeouts.delete(path); }
+  plugin.activeSyncs.delete(path);
+  plugin.diskDebouncers.delete(path);
+  return disconnectGracefully(sync, opts).then(() => { disposeSyncSession(sync); sync.doc.destroy(); });
 }
