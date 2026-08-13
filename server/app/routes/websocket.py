@@ -4,7 +4,7 @@ import asyncio
 
 from aiohttp import WSMsgType, web
 
-from app.config import AUTH_HANDSHAKE_TIMEOUT, WS_MAX_MSG_BYTES, log
+from app.config import AUTH_HANDSHAKE_TIMEOUT, MAX_PEERS_PER_ROOM, WS_MAX_MSG_BYTES, log
 from app.security.auth import check_or_claim_auth
 from app.security.paths import room_dir_for
 
@@ -35,9 +35,19 @@ async def handle_ws(request: web.Request) -> web.WebSocketResponse:
         await ws.close(code=4003, message=b"unauthorized")
         return ws
 
+    # roomname (the relay group key) must belong to the authenticated room_id
+    # -- otherwise a credential valid for one room could admit its holder into
+    # a completely different room's relay group.
+    if roomname != room_id and not roomname.startswith(f"{room_id}:"):
+        await ws.close(code=4003, message=b"unauthorized")
+        return ws
+
     peers = room_peers.setdefault(roomname, set())
+    if len(peers) >= MAX_PEERS_PER_ROOM:
+        await ws.close(code=4004, message=b"room full")
+        return ws
     peers.add(ws)
-    log.info("peer joined room %s (now %d peer(s))", roomname, len(peers))
+    log.info("peer joined room %s (now %d peer(s))", room_id[:8], len(peers))
 
     try:
         async for msg in ws:
@@ -54,11 +64,11 @@ async def handle_ws(request: web.Request) -> web.WebSocketResponse:
                         stale.add(peer)
                 peers.difference_update(stale)
             elif msg.type == WSMsgType.ERROR:
-                log.warning("ws connection for room %s closed with exception: %s", roomname, ws.exception())
+                log.warning("ws connection for room %s closed with exception: %s", room_id[:8], ws.exception())
     finally:
         peers.discard(ws)
         if not peers:
             room_peers.pop(roomname, None)
-        log.info("peer left room %s", roomname)
+        log.info("peer left room %s", room_id[:8])
 
     return ws

@@ -23,3 +23,4 @@ ROOM_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 AUTH_HANDSHAKE_TIMEOUT = 5.0
 WS_MAX_MSG_BYTES = 16 * 1024 * 1024
+MAX_PEERS_PER_ROOM = int(os.environ.get("MAX_PEERS_PER_ROOM", 32))
