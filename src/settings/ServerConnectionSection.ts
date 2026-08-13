@@ -1,5 +1,6 @@
 import { debounce, Notice, Setting } from 'obsidian';
 import type LANotePlugin from '../main';
+import { clampSyncIntervalSeconds } from '../sync/syncInterval';
 
 export function renderServerConnectionSection(containerEl: HTMLElement, plugin: LANotePlugin): void {
   containerEl.createEl('h3', { cls: 'lanote-section-header', text: 'Server Connection' });
@@ -31,6 +32,22 @@ export function renderServerConnectionSection(containerEl: HTMLElement, plugin: 
       .onChange(async (val) => {
         plugin.settings.signalingUrl = val;
         debouncedReinit();
+      }));
+
+  // Debounced so restartPeriodicSyncInterval() (clear + recreate the
+  // setInterval) doesn't run on every keystroke while typing a number.
+  const debouncedRestartPeriodicSync = debounce(() => { plugin.restartPeriodicSyncInterval(); }, 800, true);
+
+  new Setting(containerEl)
+    .setName('Sync Check Interval (seconds)')
+    .setDesc('How often each room polls the relay for changes. Clamped to 2-300s.')
+    .addText(text => text
+      .setValue(String(plugin.settings.syncIntervalSeconds))
+      .onChange(async (val) => {
+        const clamped = clampSyncIntervalSeconds(Number(val));
+        plugin.settings.syncIntervalSeconds = clamped;
+        await plugin.saveSettings();
+        debouncedRestartPeriodicSync();
       }));
 
   new Setting(containerEl)

@@ -255,6 +255,8 @@ export class ConfigSyncEngine {
       }
 
       if (!silent) new Notice(actionsCount > 0 ? `Sync complete (${actionsCount} updated)` : 'Shared folder in sync.', 2000);
+      // Silent (periodic-sync) passes skip the Notice above, so log instead -- but only when something actually changed, since this can run every few seconds.
+      else if (actionsCount > 0) console.log(`[LANote] Periodic sync applied ${actionsCount} change(s) for ${this.sharedFolder}`);
     } catch (e: any) {
       console.error('[LANote] Sync Error:', e);
       if (!silent) {

@@ -1,4 +1,5 @@
 import type LANotePlugin from './main';
+import { DEFAULT_SYNC_INTERVAL_SECONDS } from './sync/syncInterval';
 
 // A room this device hosts: its files live locally, and are pushed to the
 // server while `sharingActive`. `id` is a stable local list id, distinct from
@@ -24,6 +25,8 @@ export interface LANoteSettings {
   nickname: string;
   cursorColor: string;
   signalingUrl: string;
+  // Loaded straight from data.json, so not guaranteed to be in range (e.g. hand-edited) -- always pass through clampSyncIntervalSeconds (sync/syncInterval.ts) before use.
+  syncIntervalSeconds: number;
   hostedRooms: HostedRoom[];
   joinedRooms: JoinedRoom[];
   // Bumped on breaking settings-shape changes so loadSettings() can migrate
@@ -35,6 +38,7 @@ export const DEFAULT_SETTINGS: LANoteSettings = {
   nickname: 'Me',
   cursorColor: '#6366f1',
   signalingUrl: 'ws://localhost:4444',
+  syncIntervalSeconds: DEFAULT_SYNC_INTERVAL_SECONDS,
   hostedRooms: [],
   joinedRooms: [],
   settingsSchemaVersion: 2,
