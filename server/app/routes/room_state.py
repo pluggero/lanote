@@ -48,5 +48,5 @@ async def handle_reconstruct(request: web.Request) -> web.Response:
     for p in roomstate_dir.glob("*.bin"):
         p.unlink(missing_ok=True)
         count += 1
-    log.info("reconstruct-db: cleared %d room-state snapshot(s) for room %s", count, request.query.get("room"))
+    log.info("reconstruct-db: cleared %d room-state snapshot(s) for room %s", count, request.query.get("room", "")[:8])
     return web.json_response({"success": True, "message": f"Cleared {count} room-state snapshot(s) for this room."})
