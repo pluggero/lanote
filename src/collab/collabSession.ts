@@ -5,6 +5,7 @@ import { WebsocketProvider } from 'y-websocket';
 import { reconcileYText } from '../reconcile';
 import { normalizeServerUrl } from '../serverUrl';
 import { toWireRelPath } from '../syncPaths';
+import { derivePathToken } from '../crypto';
 import { makeEncryptingWebSocket } from '../encryptedSocket';
 import type { SyncSession } from '../types';
 import type LANotePlugin from '../main';
@@ -106,7 +107,7 @@ export async function syncFile(plugin: LANotePlugin, file: TFile) {
   });
 
   const wireRelPath = toWireRelPath(sharedFolder, file.path);
-  const fileRoomToken = `${roomKeys.roomId}:${encodeURIComponent(wireRelPath)}`;
+  const fileRoomToken = `${roomKeys.roomId}:${await derivePathToken(roomKeys.pathKey, wireRelPath)}`;
   const serverUrl = normalizeServerUrl(plugin.settings.signalingUrl);
 
   const provider = new WebsocketProvider(serverUrl, fileRoomToken, doc, {

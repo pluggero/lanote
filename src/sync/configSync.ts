@@ -1,5 +1,5 @@
 import { App, Notice } from 'obsidian';
-import { type RoomKeys } from '../crypto';
+import { type RoomKeys, derivePathToken } from '../crypto';
 import { ensureParentDirsExist, writeBinaryFile, deleteLocalFile } from '../vaultFs';
 import { toWireRelPath, toVaultRelPath, shouldIgnore } from '../syncPaths';
 import { SyncTransport } from './syncTransport';
@@ -148,7 +148,9 @@ export class ConfigSyncEngine {
           // A tombstone means a peer already deleted this path; treat this
           // copy as a stale leftover (not a new upload) unless it was
           // touched after the deletion, in which case it's a recreation.
-          const deletedAt = tombstones[wireRelPath];
+          // Tombstones are keyed by path token (opaque to the server), not
+          // wireRelPath, so the token has to be derived to look one up.
+          const deletedAt = tombstones[await derivePathToken(this.roomKeys.pathKey, wireRelPath)];
           const isStaleDeletion = deletedAt !== undefined && local.stat.mtime <= deletedAt + 2000;
 
           if (isStaleDeletion) {
