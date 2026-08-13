@@ -50,12 +50,19 @@ export function activeWireRelPathsForRoom(plugin: LANotePlugin, localRoomId: str
   return paths;
 }
 
+/** Runs a room's syncConfig() with its standard wiring: excludes paths a live-collab session already owns, and routes remote deletions of a locally-open file through abandonAndCloseFile. */
+export function syncRoom(plugin: LANotePlugin, roomId: string, silent: boolean) {
+  return plugin.roomRuntimes.get(roomId)?.configSyncEngine.syncConfig(
+    silent,
+    () => activeWireRelPathsForRoom(plugin, roomId),
+    (path) => plugin.abandonAndCloseFile(path)
+  );
+}
+
 export function getBackgroundSyncDebouncer(plugin: LANotePlugin, roomId: string): () => void {
   let fn = plugin.backgroundSyncDebouncers.get(roomId);
   if (!fn) {
-    fn = debounce(() => {
-      plugin.roomRuntimes.get(roomId)?.configSyncEngine.syncConfig(true, () => activeWireRelPathsForRoom(plugin, roomId));
-    }, 5000, true);
+    fn = debounce(() => { syncRoom(plugin, roomId, true); }, 5000, true);
     plugin.backgroundSyncDebouncers.set(roomId, fn);
   }
   return fn;

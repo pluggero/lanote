@@ -3,15 +3,16 @@ import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
 import { WebsocketProvider } from 'y-websocket';
 import { reconcileYText } from '../reconcile';
+import { touchFileMtime } from '../vaultFs';
 import { normalizeServerUrl } from '../serverUrl';
 import { toWireRelPath } from '../syncPaths';
 import { derivePathToken } from '../crypto';
 import { makeEncryptingWebSocket } from '../encryptedSocket';
 import type { SyncSession } from '../types';
 import type LANotePlugin from '../main';
-import { findHostedOrJoinedRoomForPath, activeWireRelPathsForRoom, getBackgroundSyncDebouncer } from '../room/roomLookup';
-import { disconnectGracefully, disposeSyncSession } from '../room/sessionTeardown';
-import { configureEditorForFile } from './editorBinding';
+import { findHostedOrJoinedRoomForPath, getBackgroundSyncDebouncer, syncRoom } from '../room/roomLookup';
+import { disconnectGracefully, disposeSyncSession, teardownSyncSession } from '../room/sessionTeardown';
+import { configureEditorForFile, detachStaleEditorBinding, leavesForPath } from './editorBinding';
 import { updateStatusBar } from './statusBar';
 
 /** Tears down any activeSyncs entry whose file isn't open in any leaf right now. */
@@ -26,15 +27,10 @@ export function cleanupClosedFiles(plugin: LANotePlugin) {
   for (const [path, sync] of plugin.activeSyncs.entries()) {
     if (!openPaths.has(path)) {
       console.log(`[LANote] Cleaning up closed file: ${path} (doc clientID=${sync.doc.clientID})`);
-      const retryTimeout = plugin.retryTimeouts.get(path);
-      if (retryTimeout) clearTimeout(retryTimeout);
-      plugin.retryTimeouts.delete(path);
       // Map bookkeeping is immediate; the graceful awareness-clear +
       // disconnect happens in the background so this handler (which can
       // fire often) doesn't block on it.
-      plugin.activeSyncs.delete(path);
-      plugin.diskDebouncers.delete(path);
-      disconnectGracefully(sync).then(() => { disposeSyncSession(sync); sync.doc.destroy(); });
+      teardownSyncSession(plugin, path, sync);
     }
   }
   updateStatusBar(plugin);
@@ -49,11 +45,14 @@ export function cleanupClosedFiles(plugin: LANotePlugin) {
 export function abandonActiveSync(plugin: LANotePlugin, path: string): void {
   const sync = plugin.activeSyncs.get(path);
   if (!sync) return;
-  const t = plugin.retryTimeouts.get(path);
-  if (t) { clearTimeout(t); plugin.retryTimeouts.delete(path); }
-  plugin.activeSyncs.delete(path);
-  plugin.diskDebouncers.delete(path);
-  disconnectGracefully(sync, { flush: false }).then(() => { disposeSyncSession(sync); sync.doc.destroy(); });
+  teardownSyncSession(plugin, path, sync, { flush: false });
+}
+
+/** Tears down path's active session and closes every leaf showing it, because another peer deleted it. */
+export function abandonAndCloseFile(plugin: LANotePlugin, path: string): void {
+  new Notice(`LANote: "${path}" was deleted on another device. Closing.`);
+  abandonActiveSync(plugin, path);
+  for (const view of leavesForPath(plugin, path)) view.leaf.detach();
 }
 
 export function reconnectAll(plugin: LANotePlugin) {
@@ -96,6 +95,8 @@ export async function syncFile(plugin: LANotePlugin, file: TFile) {
   }
 
   console.log(`[LANote] Starting sync for ${file.path}`);
+  // Anchors the tombstone check in doPushSnapshot: a tombstone before this predates this session; after it means the file was renamed/deleted elsewhere while this session was live.
+  const sessionStartedAt = Date.now();
   const doc = new Y.Doc();
   const ytext = doc.getText('content');
 
@@ -131,7 +132,20 @@ export async function syncFile(plugin: LANotePlugin, file: TFile) {
   // old plaintext server's own autosave, since a zero-knowledge relay never
   // sees CRDT state to persist it itself.
   const HYDRATE_ORIGIN = 'lanote-hydrate';
-  const doPushSnapshot = () => {
+  const doPushSnapshot = async () => {
+    // Pushing here would re-upload and clear another peer's tombstone for this path.
+    try {
+      const tombstones = await configSyncEngine.getRemoteTombstones();
+      const deletedAt = tombstones[await derivePathToken(roomKeys.pathKey, wireRelPath)];
+      if (deletedAt !== undefined && deletedAt >= sessionStartedAt) {
+        abandonAndCloseFile(plugin, file.path);
+        return;
+      }
+      console.log(`[LANote] [diag] doPushSnapshot ${wireRelPath}: tombstone check passed (deletedAt=${deletedAt}, sessionStartedAt=${sessionStartedAt}) -> pushing`);
+    } catch (e) {
+      console.warn(`[LANote] Tombstone check failed for ${wireRelPath}, pushing anyway:`, e);
+    }
+
     const update = Y.encodeStateAsUpdate(doc);
     console.log(`[LANote] [diag] pushing room-state snapshot for ${wireRelPath}: ${update.byteLength} bytes`);
     configSyncEngine.putRoomStateSnapshot(wireRelPath, update)
@@ -253,7 +267,7 @@ export async function syncFile(plugin: LANotePlugin, file: TFile) {
       if (t) { clearTimeout(t); plugin.retryTimeouts.delete(file.path); }
 
       // Trigger background shared-folder sync if not already syncing
-      configSyncEngine.syncConfig(true, () => activeWireRelPathsForRoom(plugin, match.room.id));
+      syncRoom(plugin, match.room.id, true);
 
       // provider.on('sync') only fires once a *live peer* replies with
       // sync-step2 -- our relay is deliberately dumb and never answers
@@ -369,13 +383,22 @@ export function handleFileRename(plugin: LANotePlugin, file: TAbstractFile, oldP
   const matchOld = findHostedOrJoinedRoomForPath(plugin, oldPath);
   if (matchOld && matchOld.room.id !== matchNew?.room.id) getBackgroundSyncDebouncer(plugin, matchOld.room.id)();
 
+  // Tombstone the old wire path so the next background sync doesn't resurrect it.
+  if (matchOld && file instanceof TFile) {
+    plugin.roomRuntimes.get(matchOld.room.id)?.configSyncEngine.deleteRemoteFile(oldPath);
+  }
+
+  // A plain rename doesn't update mtime -- if the new name reuses an old, still-tombstoned path, syncConfig()'s staleness check would otherwise misjudge this fresh rename as a leftover of that old deletion.
+  if (matchNew && file instanceof TFile) {
+    touchFileMtime(plugin.app, file.path).catch(e => console.warn(`[LANote] Failed to refresh mtime for ${file.path}:`, e));
+  }
+
   const staleSync = plugin.activeSyncs.get(oldPath);
   if (staleSync && file instanceof TFile) {
-    plugin.activeSyncs.delete(oldPath);
-    const t = plugin.retryTimeouts.get(oldPath);
-    if (t) { clearTimeout(t); plugin.retryTimeouts.delete(oldPath); }
-    plugin.diskDebouncers.delete(oldPath);
-    disconnectGracefully(staleSync).then(() => { disposeSyncSession(staleSync); staleSync.doc.destroy(); });
+    // Detach the editor from staleSync's Y.Doc before it's destroyed below.
+    for (const view of leavesForPath(plugin, file.path)) detachStaleEditorBinding(plugin, view);
+    // flush: false -- flushing would re-upload to the old (just-tombstoned) path and undo the tombstone.
+    teardownSyncSession(plugin, oldPath, staleSync, { flush: false });
     syncFile(plugin, file);
   }
 }

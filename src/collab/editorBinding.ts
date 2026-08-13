@@ -11,6 +11,15 @@ import type LANotePlugin from '../main';
 // tree on the next switch, making reconfigure() a silent no-op.
 export const collabCompartment = new Compartment();
 
+/** Every currently-open MarkdownView editing path, across all leaves. */
+export function leavesForPath(plugin: LANotePlugin, path: string): MarkdownView[] {
+  const views: MarkdownView[] = [];
+  plugin.app.workspace.iterateAllLeaves((leaf) => {
+    if (leaf.view instanceof MarkdownView && leaf.view.file?.path === path) views.push(leaf.view);
+  });
+  return views;
+}
+
 /**
  * Immediately clears this leaf's collab bindings if it's now showing a
  * different file than the one its CodeMirror instance was last bound to.

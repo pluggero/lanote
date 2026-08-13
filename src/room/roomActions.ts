@@ -5,9 +5,9 @@ import { generateRoomSecret } from '../crypto';
 import { ensureFolderExists } from '../vaultFs';
 import { isWithinSharedFolder } from '../syncPaths';
 import type LANotePlugin from '../main';
-import { findRoomById, assertNoFolderCollision, activeWireRelPathsForRoom } from './roomLookup';
+import { findRoomById, assertNoFolderCollision, syncRoom } from './roomLookup';
 import { buildRuntimeForRoom, teardownRuntimeForRoom } from './roomRuntime';
-import { disconnectGracefully, disposeSyncSession } from './sessionTeardown';
+import { teardownSyncSession } from './sessionTeardown';
 import { reconnectAll } from '../collab/collabSession';
 import { updateStatusBar } from '../collab/statusBar';
 
@@ -37,8 +37,7 @@ export async function startSharing(plugin: LANotePlugin, localRoomId: string): P
   room.updatedAt = Date.now();
   await saveSettings(plugin);
   await buildRuntimeForRoom(plugin, 'hosted', room);
-  const runtime = plugin.roomRuntimes.get(room.id);
-  await runtime?.configSyncEngine.syncConfig(false, () => activeWireRelPathsForRoom(plugin, room.id));
+  await syncRoom(plugin, room.id, false);
   reconnectAll(plugin);
   updateStatusBar(plugin);
 }
@@ -104,8 +103,7 @@ export async function joinRoom(plugin: LANotePlugin, roomSecret: string, sharedF
   plugin.settings.joinedRooms.push(room);
   await saveSettings(plugin);
   await buildRuntimeForRoom(plugin, 'joined', room);
-  const runtime = plugin.roomRuntimes.get(room.id);
-  await runtime?.configSyncEngine.syncConfig(false, () => activeWireRelPathsForRoom(plugin, room.id));
+  await syncRoom(plugin, room.id, false);
   reconnectAll(plugin);
   updateStatusBar(plugin);
   return room;
@@ -135,13 +133,7 @@ export async function reconstructDatabase(plugin: LANotePlugin, localRoomId: str
     // 1. Disconnect and clear this room's active docs locally
     for (const [path, sync] of [...plugin.activeSyncs.entries()]) {
       if (!isWithinSharedFolder(match.room.sharedFolder, path)) continue;
-      const t = plugin.retryTimeouts.get(path);
-      if (t) { clearTimeout(t); plugin.retryTimeouts.delete(path); }
-      plugin.activeSyncs.delete(path);
-      plugin.diskDebouncers.delete(path);
-      await disconnectGracefully(sync);
-      disposeSyncSession(sync);
-      sync.doc.destroy();
+      await teardownSyncSession(plugin, path, sync);
     }
 
     // 2. Clear this room's CRDT snapshots on the server (files themselves are untouched)
@@ -150,7 +142,7 @@ export async function reconstructDatabase(plugin: LANotePlugin, localRoomId: str
     new Notice('Server room state cleared. Re-uploading all files as source of truth...', 3500);
 
     // 3. Force full folder re-upload
-    await runtime.configSyncEngine.syncConfig(false, () => activeWireRelPathsForRoom(plugin, localRoomId));
+    await syncRoom(plugin, localRoomId, false);
 
     // 4. Reconnect active workspace leaves
     reconnectAll(plugin);

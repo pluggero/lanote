@@ -47,6 +47,12 @@ export async function writeBinaryFile(app: App, relPath: string, data: ArrayBuff
   await app.vault.adapter.writeBinary(relPath, data);
 }
 
+/** Rewrites a file with its own content but a fresh mtime -- a plain rename doesn't update mtime on its own. */
+export async function touchFileMtime(app: App, relPath: string): Promise<void> {
+  const data = await app.vault.adapter.readBinary(relPath);
+  await app.vault.adapter.writeBinary(relPath, data, { mtime: Date.now() });
+}
+
 /**
  * Removes a file via the Vault API (trash, not the raw adapter) so Obsidian's
  * file index/UI update immediately and the removal is recoverable from trash.

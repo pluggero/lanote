@@ -6,7 +6,7 @@ import { isWithinSharedFolder } from '../syncPaths';
 import { ConfigSyncEngine } from '../sync/configSync';
 import type LANotePlugin from '../main';
 import { findRoomById } from './roomLookup';
-import { disconnectGracefully, disposeSyncSession } from './sessionTeardown';
+import { teardownSyncSession } from './sessionTeardown';
 import { reconnectAll } from '../collab/collabSession';
 import { updateStatusBar } from '../collab/statusBar';
 
@@ -23,13 +23,7 @@ export async function teardownRuntimeForRoom(plugin: LANotePlugin, localRoomId: 
   if (match) {
     for (const [path, sync] of [...plugin.activeSyncs.entries()]) {
       if (isWithinSharedFolder(match.room.sharedFolder, path)) {
-        const t = plugin.retryTimeouts.get(path);
-        if (t) { clearTimeout(t); plugin.retryTimeouts.delete(path); }
-        plugin.activeSyncs.delete(path);
-        plugin.diskDebouncers.delete(path);
-        await disconnectGracefully(sync);
-        disposeSyncSession(sync);
-        sync.doc.destroy();
+        await teardownSyncSession(plugin, path, sync);
       }
     }
   }

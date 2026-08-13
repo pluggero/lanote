@@ -2,6 +2,7 @@ import { Setting } from 'obsidian';
 import { isWithinSharedFolder } from '../syncPaths';
 import type LANotePlugin from '../main';
 import type { JoinedRoom } from '../settingsStore';
+import { syncRoom } from '../room/roomLookup';
 import { renderRoomListItem, type BadgeVariant, type RoomListItemAction, type RoomListItemHandle } from './RoomListItem';
 import { getRoomPeers } from './roomPeers';
 import { ConfirmModal, JoinRoomModal } from './modals';
@@ -58,7 +59,7 @@ function buildJoinedRoomActions(plugin: LANotePlugin, room: JoinedRoom, rerender
     {
       label: 'Sync Now',
       onClick: async () => {
-        await plugin.roomRuntimes.get(room.id)?.configSyncEngine.syncConfig(false, () => plugin.activeWireRelPathsForRoom(room.id));
+        await syncRoom(plugin, room.id, false);
       },
     },
     {
