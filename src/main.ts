@@ -14,6 +14,7 @@ import { detachStaleEditorBinding, collabCompartment } from './collab/editorBind
 import { updateStatusBar } from './collab/statusBar';
 import { toggleSimulator } from './collab/simulator';
 import { cleanupAndMergeConflicts } from './sync/conflictMerge';
+import { clampSyncIntervalSeconds } from './sync/syncInterval';
 
 export default class LANotePlugin extends Plugin {
   settings!: LANoteSettings;
@@ -33,6 +34,9 @@ export default class LANotePlugin extends Plugin {
   // One debounced background-sync trigger per room, so one room's background
   // sync doesn't force a rescan of every other room's folder.
   public backgroundSyncDebouncers: Map<string, () => void> = new Map();
+  // Raw id of the current periodic-sync setInterval, so restartPeriodicSyncInterval() can clear and replace it when the user changes syncIntervalSeconds.
+  // Typed as DOM's `number` (not @types/node's Timeout) because registerInterval() requires it -- only window.setInterval/window.clearInterval return that.
+  private periodicSyncIntervalId: number | null = null;
 
   async onload() {
     await this.loadSettings();
@@ -131,10 +135,8 @@ export default class LANotePlugin extends Plugin {
       handleFileRename(this, file, oldPath);
     }));
 
-    // Automatically check for remote room-folder changes every 30 seconds
-    this.registerInterval(window.setInterval(() => {
-      for (const roomId of this.roomRuntimes.keys()) getBackgroundSyncDebouncer(this, roomId)();
-    }, 30000));
+    // Automatically check for remote room-folder changes on a timer
+    this.restartPeriodicSyncInterval();
 
     // Sync the currently active file
     const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -199,6 +201,21 @@ export default class LANotePlugin extends Plugin {
 
   public activeWireRelPathsForRoom(localRoomId: string): Set<string> {
     return activeWireRelPathsForRoom(this, localRoomId);
+  }
+
+  // Calls syncConfig() directly rather than via getBackgroundSyncDebouncer --
+  // that debouncer coalesces bursts of local file events, which a fixed-cadence
+  // tick has none of, so it'd only add its own delay on top. syncConfig()'s own
+  // isSyncing guard makes a direct call on every tick safe.
+  public restartPeriodicSyncInterval(): void {
+    if (this.periodicSyncIntervalId !== null) window.clearInterval(this.periodicSyncIntervalId);
+    const intervalMs = clampSyncIntervalSeconds(this.settings.syncIntervalSeconds) * 1000;
+    this.periodicSyncIntervalId = window.setInterval(() => {
+      for (const roomId of this.roomRuntimes.keys()) {
+        this.roomRuntimes.get(roomId)?.configSyncEngine.syncConfig(true, () => activeWireRelPathsForRoom(this, roomId));
+      }
+    }, intervalMs);
+    this.registerInterval(this.periodicSyncIntervalId);
   }
 
   public async reinitializeAllRooms(): Promise<void> {
