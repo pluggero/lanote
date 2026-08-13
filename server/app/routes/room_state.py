@@ -15,6 +15,8 @@ async def handle_room_state_get(request: web.Request) -> web.Response:
     if rel is None:
         return web.Response(status=400, text="invalid path")
     p = room_state_path(room_dir, rel)
+    if p is None:
+        return web.Response(status=400, text="invalid path")
     if not p.is_file():
         # Genuinely empty body means "no snapshot yet" -- unambiguous, since
         # real AES-GCM ciphertext (IV + tag alone) is never 0 bytes.
@@ -29,8 +31,11 @@ async def handle_room_state_post(request: web.Request) -> web.Response:
     rel = safe_rel_path(request.query.get("path", ""))
     if rel is None:
         return web.Response(status=400, text="invalid path")
+    p = room_state_path(room_dir, rel)
+    if p is None:
+        return web.Response(status=400, text="invalid path")
     body = await request.read()
-    room_state_path(room_dir, rel).write_bytes(body)
+    p.write_bytes(body)
     return web.Response(status=200, text="Stored")
 
 

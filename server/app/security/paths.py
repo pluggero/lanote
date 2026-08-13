@@ -1,6 +1,5 @@
 """Filesystem path-safety primitives: room directory layout and traversal defense."""
 
-import base64
 from pathlib import Path
 
 from app.config import ROOMS_DIR, ROOM_ID_RE
@@ -12,6 +11,7 @@ def room_dir_for(room_id: str) -> Path | None:
     d = ROOMS_DIR / room_id
     (d / "files").mkdir(parents=True, exist_ok=True)
     (d / "roomstate").mkdir(parents=True, exist_ok=True)
+    (d / "names").mkdir(parents=True, exist_ok=True)
     return d
 
 
@@ -44,9 +44,19 @@ def verifier_path(room_dir: Path) -> Path:
     return room_dir / ".authverifier"
 
 
-def room_state_path(room_dir: Path, rel: Path) -> Path:
-    safe_name = base64.urlsafe_b64encode(rel.as_posix().encode()).decode().rstrip("=")
-    return room_dir / "roomstate" / f"{safe_name}.bin"
+def room_state_path(room_dir: Path, rel: Path) -> Path | None:
+    # rel is already an opaque, filesystem-safe path token (see crypto.ts
+    # derivePathToken) -- no need to re-encode it as this used to when rel
+    # was a plaintext, possibly-nested relative path.
+    return resolve_within(room_dir / "roomstate", Path(f"{rel.as_posix()}.bin"))
+
+
+def name_path(room_dir: Path, rel: Path) -> Path | None:
+    """Sidecar storing a file's encrypted display name, keyed by the same
+    path token as its content under files/. Kept in its own directory
+    (rather than alongside files/) so handle_manifest's rglob over files/
+    doesn't need to filter it out."""
+    return resolve_within(room_dir / "names", rel)
 
 
 def tombstones_path(room_dir: Path) -> Path:

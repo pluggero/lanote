@@ -1,18 +1,21 @@
 // Zero-knowledge key derivation and AEAD for LANote. Everything here runs
 // client-side; the server never sees a passphrase, a derived key, or plaintext.
 //
-// A single room secret is expanded (PBKDF2 -> HKDF) into three independent
-// values so that possessing one reveals nothing about the others:
+// A single room secret is expanded (PBKDF2 -> HKDF) into independent values
+// so that possessing one reveals nothing about the others:
 //   - encKey:    AES-GCM key, never leaves the client, never sent anywhere
 //   - authToken: server-facing bearer credential (server may learn this)
 //   - roomId:    opaque room identifier (server may learn this)
+//   - pathKey:   HMAC key, never leaves the client, never sent anywhere
 
-export type AADKind = 'file' | 'room-state' | 'ws';
+export type AADKind = 'file' | 'room-state' | 'ws' | 'name';
 
 export interface RoomKeys {
   roomId: string;
   authToken: Uint8Array<ArrayBuffer>;
   encKey: CryptoKey;
+  // HMAC key for deterministic path tokens (sign-only, not AEAD -- see derivePathToken).
+  pathKey: CryptoKey;
 }
 
 const PBKDF2_ITERATIONS = 210_000;
@@ -120,21 +123,71 @@ async function hkdfEncKey(masterBits: ArrayBuffer, info: string): Promise<Crypto
   );
 }
 
-/** Derives (encKey, authToken, roomId) from a room secret. Same secret -> same three values on every device, with none reversible into another (HKDF domain separation via distinct `info` strings). */
+async function hkdfHmacKey(masterBits: ArrayBuffer, info: string): Promise<CryptoKey> {
+  const hkdfKey = await crypto.subtle.importKey('raw', masterBits, 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'HKDF', hash: 'SHA-256', salt: APP_SALT, info: utf8(info) },
+    hkdfKey,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+}
+
+/** Derives (encKey, authToken, roomId, pathKey) from a room secret. Same secret -> same values on every device, with none reversible into another (HKDF domain separation via distinct `info` strings). */
 export async function deriveRoomKeys(secret: string): Promise<RoomKeys> {
   const master = await pbkdf2Master(secret);
   const encKey = await hkdfEncKey(master, 'lanote:v1:enc-key');
   const authTokenBits = await hkdfBits(master, 'lanote:v1:auth-token', 256);
   const roomIdBits = await hkdfBits(master, 'lanote:v1:room-id', 128);
+  const pathKey = await hkdfHmacKey(master, 'lanote:v1:path-key');
   return {
     roomId: base64UrlEncode(roomIdBits),
     authToken: new Uint8Array(authTokenBits),
     encKey,
+    pathKey,
   };
 }
 
-export function makeAAD(roomId: string, kind: AADKind): Uint8Array<ArrayBuffer> {
-  return utf8(`lanote:v1:${kind}:${roomId}`);
+/** `token`, when given, binds the AAD to one specific file's storage slot so ciphertext can't be swapped between files undetected. */
+export function makeAAD(roomId: string, kind: AADKind, token?: string): Uint8Array<ArrayBuffer> {
+  return utf8(token ? `lanote:v1:${kind}:${roomId}:${token}` : `lanote:v1:${kind}:${roomId}`);
+}
+
+/** Deterministic, one-way stand-in for a file's path: same path -> same token on every device, but not reversible without pathKey. Used as the server-visible storage/lookup key everywhere a path would otherwise appear (upload/download/delete, manifest, tombstones, live-collab room name). Server trusts the caller to derive tokens honestly -- it has no way to verify a token wasn't just a plaintext path, since doing so would require learning pathKey. */
+export async function derivePathToken(pathKey: CryptoKey, wireRelPath: string): Promise<string> {
+  const sig = await crypto.subtle.sign('HMAC', pathKey, utf8(wireRelPath));
+  return base64UrlEncode(sig);
+}
+
+// AES-GCM doesn't hide plaintext length, so pad names to a fixed bucket before
+// encrypting -- otherwise ciphertext length would leak the path's byte length.
+const NAME_PAD_BLOCK = 32;
+
+function padName(bytes: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer> {
+  if (bytes.length > 0xffff) throw new Error('Path too long to encrypt');
+  const padded = new Uint8Array(Math.ceil((bytes.length + 2) / NAME_PAD_BLOCK) * NAME_PAD_BLOCK) as Uint8Array<ArrayBuffer>;
+  new DataView(padded.buffer).setUint16(0, bytes.length, false);
+  padded.set(bytes, 2);
+  return padded;
+}
+
+function unpadName(padded: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer> {
+  const len = new DataView(padded.buffer, padded.byteOffset, padded.byteLength).getUint16(0, false);
+  if (2 + len > padded.length) throw new Error('Malformed padded name');
+  return padded.slice(2, 2 + len);
+}
+
+/** Encrypts a file's wire-relative path for display, bound to its token via AAD. */
+export async function encryptFileName(encKey: CryptoKey, roomId: string, token: string, wireRelPath: string): Promise<string> {
+  const envelope = await encryptBytes(encKey, padName(utf8(wireRelPath)).buffer, makeAAD(roomId, 'name', token));
+  return base64UrlEncode(envelope);
+}
+
+/** Inverse of encryptFileName. Throws if encName wasn't sealed for this exact token (wrong slot) or room. */
+export async function decryptFileName(encKey: CryptoKey, roomId: string, token: string, encName: string): Promise<string> {
+  const plaintext = await decryptBytes(encKey, base64UrlDecode(encName).buffer, makeAAD(roomId, 'name', token));
+  return new TextDecoder().decode(unpadName(new Uint8Array(plaintext) as Uint8Array<ArrayBuffer>));
 }
 
 /** Encrypts to the wire envelope [12-byte random IV][ciphertext + 16-byte tag]. */
