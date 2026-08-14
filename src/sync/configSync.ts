@@ -3,8 +3,11 @@ import { type RoomKeys, derivePathToken } from '../crypto';
 import { ensureParentDirsExist, writeBinaryFile, deleteLocalFile } from '../vaultFs';
 import { toWireRelPath, toVaultRelPath, shouldIgnore } from '../syncPaths';
 import { SyncTransport } from './syncTransport';
-import { resolveMarkdownConflict } from './mergeMarkdown';
-import { resolveJsonConflict } from './mergeJson';
+import { resolveByLatestMtime } from './mtimeWins';
+import { detectFileType } from './filetypes/detectFileType';
+import { resolveMarkdownConflict } from './filetypes/markdown/merge';
+import { resolveJsonConflict } from './filetypes/json/merge';
+import { resolveExcalidrawConflict } from './filetypes/excalidraw/merge';
 
 export class ConfigSyncEngine {
   // Instance-level (not static): with multi-room support, each room gets its
@@ -217,53 +220,71 @@ export class ConfigSyncEngine {
             if (contentsMatch) {
               console.log(`[LANote] [diag] syncConfig ${wireRelPath}: contents match, aligning timestamps`);
               // Contents match exactly; just align the timestamps to the newest modified time
-              if (local.stat.mtime > remote.mtime) {
-                await this.transport.uploadFile(wireRelPath, localData, local.stat.mtime);
-              } else {
-                await writeBinaryFile(this.app, vaultRelPath, remoteData, remote.mtime);
-              }
+              await resolveByLatestMtime({
+                app: this.app, transport: this.transport, wireRelPath, vaultRelPath,
+                localData, remoteData, localMtime: local.stat.mtime, remoteMtime: remote.mtime,
+              });
             } else {
               // Conflict: Contents are different and timestamps differ.
               console.log(`[LANote] [diag] syncConfig ${wireRelPath}: conflict (localMtime=${local.stat.mtime}, remoteMtime=${remote.mtime})`);
-              if (wireRelPath.endsWith('.md')) {
-                // ELEGANT AUTOMATIC CRDT NOTE MERGE!
-                const didAct = await resolveMarkdownConflict({
-                  app: this.app,
-                  transport: this.transport,
-                  wireRelPath,
-                  vaultRelPath,
-                  localData,
-                  remoteData,
-                  localMtime: local.stat.mtime,
-                  remoteMtime: remote.mtime,
-                  getActiveLivePaths,
-                });
-                if (!didAct) continue;
-                actionsCount++;
-              } else if (wireRelPath.endsWith('.json')) {
-                // Elegant automatic JSON merge
-                await resolveJsonConflict({
-                  app: this.app,
-                  transport: this.transport,
-                  wireRelPath,
-                  vaultRelPath,
-                  localBytes,
-                  remoteBytes,
-                  localData,
-                  remoteData,
-                  localMtime: local.stat.mtime,
-                  remoteMtime: remote.mtime,
-                });
-                actionsCount++;
-              } else {
-                // Non-JSON/Non-Markdown binary files: Resolve silently via latest modification time (mtime)
-                console.log(`[LANote] Silently resolving binary conflict for ${wireRelPath} via latest mtime`);
-                if (local.stat.mtime > remote.mtime) {
-                  await this.transport.uploadFile(wireRelPath, localData, local.stat.mtime);
-                } else {
-                  await writeBinaryFile(this.app, vaultRelPath, remoteData, remote.mtime);
+              switch (detectFileType(wireRelPath)) {
+                case 'excalidraw': {
+                  await resolveExcalidrawConflict({
+                    app: this.app,
+                    transport: this.transport,
+                    wireRelPath,
+                    vaultRelPath,
+                    localData,
+                    remoteData,
+                    localMtime: local.stat.mtime,
+                    remoteMtime: remote.mtime,
+                  });
+                  actionsCount++;
+                  break;
                 }
-                actionsCount++;
+                case 'markdown': {
+                  // ELEGANT AUTOMATIC CRDT NOTE MERGE!
+                  const didAct = await resolveMarkdownConflict({
+                    app: this.app,
+                    transport: this.transport,
+                    wireRelPath,
+                    vaultRelPath,
+                    localData,
+                    remoteData,
+                    localMtime: local.stat.mtime,
+                    remoteMtime: remote.mtime,
+                    getActiveLivePaths,
+                  });
+                  if (!didAct) continue;
+                  actionsCount++;
+                  break;
+                }
+                case 'json': {
+                  await resolveJsonConflict({
+                    app: this.app,
+                    transport: this.transport,
+                    wireRelPath,
+                    vaultRelPath,
+                    localBytes,
+                    remoteBytes,
+                    localData,
+                    remoteData,
+                    localMtime: local.stat.mtime,
+                    remoteMtime: remote.mtime,
+                  });
+                  actionsCount++;
+                  break;
+                }
+                default: {
+                  // No dedicated resolver for this type -- resolve silently via latest mtime.
+                  console.log(`[LANote] Silently resolving binary conflict for ${wireRelPath} via latest mtime`);
+                  await resolveByLatestMtime({
+                    app: this.app, transport: this.transport, wireRelPath, vaultRelPath,
+                    localData, remoteData, localMtime: local.stat.mtime, remoteMtime: remote.mtime,
+                  });
+                  actionsCount++;
+                  break;
+                }
               }
             }
           }

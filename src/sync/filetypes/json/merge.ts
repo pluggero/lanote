@@ -1,6 +1,13 @@
 import { App } from 'obsidian';
-import { writeBinaryFile } from '../vaultFs';
-import type { SyncTransport } from './syncTransport';
+import type { SyncTransport } from '../../syncTransport';
+import { commitMergedFile, resolveByLatestMtime } from '../../mtimeWins';
+
+// Keys that, if assigned via merged[key] = ... on a plain object, mutate the
+// object's prototype instead of setting an own property (`__proto__` goes
+// through Object.prototype's accessor; `constructor`/`prototype` reach the
+// same object via a different route). source is a remote peer's JSON file,
+// so an untrusted key must never reach that assignment.
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 function deepMerge(target: any, source: any): any {
   if (typeof target !== 'object' || target === null || typeof source !== 'object' || source === null) {
@@ -11,6 +18,7 @@ function deepMerge(target: any, source: any): any {
   }
   const merged = { ...target };
   for (const key of Object.keys(source)) {
+    if (UNSAFE_KEYS.has(key)) continue;
     if (source[key] instanceof Object && key in target) {
       merged[key] = deepMerge(target[key], source[key]);
     } else {
@@ -48,17 +56,10 @@ export async function resolveJsonConflict(ctx: JsonConflictContext): Promise<voi
 
     const mergedMtime = Math.max(localMtime, remoteMtime);
 
-    // Save merged file locally and upload to remote
-    await writeBinaryFile(app, vaultRelPath, mergedData, mergedMtime);
-    await transport.uploadFile(wireRelPath, mergedData, mergedMtime);
+    await commitMergedFile(app, transport, wireRelPath, vaultRelPath, mergedData, mergedMtime);
     console.log(`[LANote] Automatically merged JSON conflict for config file: ${wireRelPath}`);
   } catch (jsonErr) {
     console.warn(`[LANote] JSON merge failed for ${wireRelPath}, falling back to silent mtime resolution:`, jsonErr);
-    // Fallback: Silent latest modified wins (Zero Conflicts Protocol!)
-    if (localMtime > remoteMtime) {
-      await transport.uploadFile(wireRelPath, localData, localMtime);
-    } else {
-      await writeBinaryFile(app, vaultRelPath, remoteData, remoteMtime);
-    }
+    await resolveByLatestMtime({ app, transport, wireRelPath, vaultRelPath, localData, remoteData, localMtime, remoteMtime });
   }
 }
