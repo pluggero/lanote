@@ -49,7 +49,7 @@ export async function resolveJsonConflict(ctx: JsonConflictContext): Promise<voi
     const mergedMtime = Math.max(localMtime, remoteMtime);
 
     // Save merged file locally and upload to remote
-    await writeBinaryFile(app, vaultRelPath, mergedData);
+    await writeBinaryFile(app, vaultRelPath, mergedData, mergedMtime);
     await transport.uploadFile(wireRelPath, mergedData, mergedMtime);
     console.log(`[LANote] Automatically merged JSON conflict for config file: ${wireRelPath}`);
   } catch (jsonErr) {
@@ -58,7 +58,7 @@ export async function resolveJsonConflict(ctx: JsonConflictContext): Promise<voi
     if (localMtime > remoteMtime) {
       await transport.uploadFile(wireRelPath, localData, localMtime);
     } else {
-      await writeBinaryFile(app, vaultRelPath, remoteData);
+      await writeBinaryFile(app, vaultRelPath, remoteData, remoteMtime);
     }
   }
 }

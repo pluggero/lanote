@@ -15,6 +15,7 @@ import { updateStatusBar } from './collab/statusBar';
 import { toggleSimulator } from './collab/simulator';
 import { cleanupAndMergeConflicts } from './sync/conflictMerge';
 import { clampSyncIntervalSeconds } from './sync/syncInterval';
+import { consumeSyncDrivenDeletion } from './vaultFs';
 
 export default class LANotePlugin extends Plugin {
   settings!: LANoteSettings;
@@ -123,6 +124,7 @@ export default class LANotePlugin extends Plugin {
     }));
     this.registerEvent(this.app.vault.on('delete', (file) => {
       if (file instanceof TFile) {
+        if (consumeSyncDrivenDeletion(file.path)) return;
         abandonActiveSync(this, file.path);
         const match = findHostedOrJoinedRoomForPath(this, file.path);
         if (match) {
