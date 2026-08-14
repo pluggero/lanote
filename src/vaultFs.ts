@@ -43,8 +43,8 @@ export async function ensureParentDirsExist(app: App, relPath: string): Promise<
  * Writes binary data directly to the Obsidian vault using low-level adapter APIs
  * to bypass standard hidden-file limitations of app.vault.
  */
-export async function writeBinaryFile(app: App, relPath: string, data: ArrayBuffer): Promise<void> {
-  await app.vault.adapter.writeBinary(relPath, data);
+export async function writeBinaryFile(app: App, relPath: string, data: ArrayBuffer, mtime?: number): Promise<void> {
+  await app.vault.adapter.writeBinary(relPath, data, mtime !== undefined ? { mtime } : undefined);
 }
 
 /** Rewrites a file with its own content but a fresh mtime -- a plain rename doesn't update mtime on its own. */
@@ -53,13 +53,37 @@ export async function touchFileMtime(app: App, relPath: string): Promise<void> {
   await app.vault.adapter.writeBinary(relPath, data, { mtime: Date.now() });
 }
 
+const syncDrivenDeletions = new Set<string>();
+
+/**
+ * Checks and clears relPath's flag in one step -- works whether Obsidian
+ * fires 'delete' synchronously inside trash() or after it resolves.
+ */
+export function consumeSyncDrivenDeletion(relPath: string): boolean {
+  return syncDrivenDeletions.delete(relPath);
+}
+
 /**
  * Removes a file via the Vault API (trash, not the raw adapter) so Obsidian's
  * file index/UI update immediately and the removal is recoverable from trash.
  * Used when a background sync determines a local file is a stale leftover of
  * a deletion that already happened elsewhere in the room.
+ *
+ * trash() fires the same 'delete' event a user-initiated deletion would, so
+ * relPath is flagged first -- without it, main.ts's delete handler would
+ * re-announce this cleanup as a fresh deletion with a new server timestamp,
+ * which can mask a legitimate recreation of the same path right afterward.
  */
 export async function deleteLocalFile(app: App, relPath: string): Promise<void> {
   const file = app.vault.getAbstractFileByPath(relPath);
-  if (file) await app.vault.trash(file, true);
+  if (!file) return;
+  syncDrivenDeletions.add(relPath);
+  // Leak guard: clears the flag if trash() resolves without firing 'delete',
+  // so it can't suppress a later, unrelated deletion of the same path.
+  const fallback = setTimeout(() => syncDrivenDeletions.delete(relPath), 5000);
+  try {
+    await app.vault.trash(file, true);
+  } finally {
+    clearTimeout(fallback);
+  }
 }

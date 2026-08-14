@@ -188,7 +188,7 @@ export class ConfigSyncEngine {
           // File exists only remotely -> Download
           await ensureParentDirsExist(this.app, vaultRelPath);
           const data = await this.transport.downloadFile(wireRelPath);
-          await writeBinaryFile(this.app, vaultRelPath, data);
+          await writeBinaryFile(this.app, vaultRelPath, data, remote.mtime);
           actionsCount++;
         } else if (local && remote) {
           if (getActiveLivePaths().has(wireRelPath)) continue;
@@ -220,7 +220,7 @@ export class ConfigSyncEngine {
               if (local.stat.mtime > remote.mtime) {
                 await this.transport.uploadFile(wireRelPath, localData, local.stat.mtime);
               } else {
-                await writeBinaryFile(this.app, vaultRelPath, remoteData);
+                await writeBinaryFile(this.app, vaultRelPath, remoteData, remote.mtime);
               }
             } else {
               // Conflict: Contents are different and timestamps differ.
@@ -261,7 +261,7 @@ export class ConfigSyncEngine {
                 if (local.stat.mtime > remote.mtime) {
                   await this.transport.uploadFile(wireRelPath, localData, local.stat.mtime);
                 } else {
-                  await writeBinaryFile(this.app, vaultRelPath, remoteData);
+                  await writeBinaryFile(this.app, vaultRelPath, remoteData, remote.mtime);
                 }
                 actionsCount++;
               }

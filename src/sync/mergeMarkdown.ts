@@ -85,8 +85,9 @@ export async function resolveMarkdownConflict(ctx: MarkdownConflictContext): Pro
       const mergedText = ytext.toString();
       const encoder = new TextEncoder();
       const mergedBytes = encoder.encode(mergedText).buffer;
-      await writeBinaryFile(app, vaultRelPath, mergedBytes);
-      await transport.uploadFile(wireRelPath, mergedBytes, Date.now());
+      const mergedMtime = Date.now();
+      await writeBinaryFile(app, vaultRelPath, mergedBytes, mergedMtime);
+      await transport.uploadFile(wireRelPath, mergedBytes, mergedMtime);
 
       console.log(`[LANote] CRDT merge successful for note: ${wireRelPath}`);
     }
@@ -96,7 +97,7 @@ export async function resolveMarkdownConflict(ctx: MarkdownConflictContext): Pro
     if (localMtime > remoteMtime) {
       await transport.uploadFile(wireRelPath, localData, localMtime);
     } else {
-      await writeBinaryFile(app, vaultRelPath, remoteData);
+      await writeBinaryFile(app, vaultRelPath, remoteData, remoteMtime);
     }
   }
   return true;
