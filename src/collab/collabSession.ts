@@ -8,6 +8,7 @@ import { normalizeServerUrl } from '../serverUrl';
 import { toWireRelPath } from '../syncPaths';
 import { derivePathToken } from '../crypto';
 import { makeEncryptingWebSocket } from '../encryptedSocket';
+import { detectFileType } from '../sync/filetypes/detectFileType';
 import type { SyncSession } from '../types';
 import type LANotePlugin from '../main';
 import { findHostedOrJoinedRoomForPath, getBackgroundSyncDebouncer, syncRoom } from '../room/roomLookup';
@@ -78,6 +79,12 @@ export function reconnectAll(plugin: LANotePlugin) {
 }
 
 export async function syncFile(plugin: LANotePlugin, file: TFile) {
+  // Excalidraw drawings are merged element-wise via the background sync
+  // path (sync/filetypes/excalidraw/), not this Y.Text session. Without
+  // this guard, opening one via Obsidian's "Open as Markdown" would
+  // character-diff its compressed scene data and corrupt it.
+  if (detectFileType(file.path) === 'excalidraw') return;
+
   const match = findHostedOrJoinedRoomForPath(plugin, file.path);
   if (!match) return;
   const runtime = plugin.roomRuntimes.get(match.room.id);

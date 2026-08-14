@@ -1,8 +1,8 @@
 import { App } from 'obsidian';
 import * as Y from 'yjs';
-import { reconcileYText } from '../reconcile';
-import { writeBinaryFile } from '../vaultFs';
-import type { SyncTransport } from './syncTransport';
+import { reconcileYText } from '../../../reconcile';
+import type { SyncTransport } from '../../syncTransport';
+import { commitMergedFile, resolveByLatestMtime } from '../../mtimeWins';
 
 export interface MarkdownConflictContext {
   app: App;
@@ -32,7 +32,7 @@ export async function resolveMarkdownConflict(ctx: MarkdownConflictContext): Pro
   try {
     console.log(`[LANote] Automatically merging CRDT conflict for note: ${wireRelPath}`);
 
-    // 1. Fetch and decrypt the server's Yjs room state snapshot, if any
+    // Fetch and decrypt the server's Yjs room-state snapshot, if any.
     const doc = new Y.Doc();
     const snapshot = await transport.getRoomStateSnapshot(wireRelPath);
     if (snapshot) {
@@ -45,14 +45,12 @@ export async function resolveMarkdownConflict(ctx: MarkdownConflictContext): Pro
     // already be stale; the live session is now the authoritative owner.
     if (getActiveLivePaths().has(wireRelPath)) return false;
 
-    // 2. Read the local disk file content
     const decoder = new TextDecoder('utf-8');
     const localText = decoder.decode(new Uint8Array(localData));
 
-    // 3. Reconcile the Yjs document with our local offline edits
     const ytext = doc.getText('content');
 
-    // If the Yjs doc was empty, initialize it with the remote content first
+    // If the Yjs doc was empty, initialize it with the remote content first.
     if (ytext.toString() === '') {
       const remoteText = decoder.decode(new Uint8Array(remoteData));
       ytext.insert(0, remoteText);
@@ -72,33 +70,26 @@ export async function resolveMarkdownConflict(ctx: MarkdownConflictContext): Pro
       await transport.uploadFile(wireRelPath, encoder.encode(localText).buffer, Date.now());
       console.log(`[LANote] Realigned stale file-body manifest for note: ${wireRelPath}`);
     } else {
-      // Reconcile with local text to merge offline edits cleanly
+      // Reconcile with local text to merge offline edits cleanly.
       reconcileYText(ytext, localText);
 
-      // 4. Encrypt and send the merged state as a Yjs update
       const mergedUpdate = Y.encodeStateAsUpdate(doc);
       await transport.putRoomStateSnapshot(wireRelPath, mergedUpdate);
 
-      // 5. Write the merged text back to our local disk file, and upload it
-      //    explicitly -- unlike the old plaintext server, this server never
-      //    derives the file side from a room-state snapshot on its own.
+      // Both the disk file and the server's file-body manifest need the
+      // merged text: the server never derives a file's body from its
+      // room-state snapshot on its own.
       const mergedText = ytext.toString();
       const encoder = new TextEncoder();
       const mergedBytes = encoder.encode(mergedText).buffer;
       const mergedMtime = Date.now();
-      await writeBinaryFile(app, vaultRelPath, mergedBytes, mergedMtime);
-      await transport.uploadFile(wireRelPath, mergedBytes, mergedMtime);
+      await commitMergedFile(app, transport, wireRelPath, vaultRelPath, mergedBytes, mergedMtime);
 
       console.log(`[LANote] CRDT merge successful for note: ${wireRelPath}`);
     }
   } catch (crdtErr) {
     console.error(`[LANote] CRDT merge failed for ${wireRelPath}, falling back to silent mtime resolution:`, crdtErr);
-    // Fallback: Silent latest modified wins (Zero Conflicts Protocol!)
-    if (localMtime > remoteMtime) {
-      await transport.uploadFile(wireRelPath, localData, localMtime);
-    } else {
-      await writeBinaryFile(app, vaultRelPath, remoteData, remoteMtime);
-    }
+    await resolveByLatestMtime({ app, transport, wireRelPath, vaultRelPath, localData, remoteData, localMtime, remoteMtime });
   }
   return true;
 }

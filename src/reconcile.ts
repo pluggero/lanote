@@ -42,3 +42,27 @@ export function reconcileYText(ytext: Y.Text, newText: string): void {
     }
   });
 }
+
+/**
+ * Reconciles the entries of a Y.Map with a target array of already-merged
+ * items, each identified by its own `id` field (e.g. Excalidraw scene
+ * elements). Only `.set()`s entries whose serialized value actually
+ * changed, and removes entries absent from `merged`, inside one
+ * transaction -- the Y.Text equivalent of reconcileYText's minimal-diff
+ * approach, but for keyed CRDT maps instead of ordered text.
+ */
+export function reconcileYElements(yElements: Y.Map<any>, merged: Array<{ id: string }>): void {
+  const mergedById = new Map(merged.map(item => [item.id, item]));
+
+  yElements.doc?.transact(() => {
+    for (const [id, item] of mergedById) {
+      const current = yElements.get(id);
+      if (current === undefined || JSON.stringify(current) !== JSON.stringify(item)) {
+        yElements.set(id, item);
+      }
+    }
+    for (const id of yElements.keys()) {
+      if (!mergedById.has(id)) yElements.delete(id);
+    }
+  });
+}
