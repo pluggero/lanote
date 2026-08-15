@@ -18,13 +18,10 @@ export interface ExcalidrawConflictContext {
 }
 
 /**
- * Automatically merges a conflicting drawing at the element level instead
- * of as text: fetches the last CRDT snapshot of the scene's elements (if
- * any), reconciles both the local and remote files' elements into it by
- * id/version (see reconcileElements.ts), and writes the merged scene back.
- * Falls back to silent latest-mtime-wins if either side doesn't parse as a
- * *.excalidraw.md file, since there's nothing to merge at the element level
- * in that case.
+ * Merges a conflicting drawing at the element level: fetches the scene's
+ * CRDT snapshot, reconciles local/remote elements into it by id/version
+ * (reconcileElements.ts), and writes the merged scene back. Falls back to
+ * latest-mtime-wins if either side doesn't parse as a *.excalidraw.md file.
  */
 export async function resolveExcalidrawConflict(ctx: ExcalidrawConflictContext): Promise<void> {
   const { app, transport, wireRelPath, vaultRelPath, localData, remoteData, localMtime, remoteMtime } = ctx;
@@ -40,9 +37,7 @@ export async function resolveExcalidrawConflict(ctx: ExcalidrawConflictContext):
     if (snapshot) Y.applyUpdate(doc, snapshot);
     const yElements = doc.getMap<ExcalidrawElementLike>('elements');
 
-    // First-ever conflict for this drawing: seed the CRDT from the remote
-    // side's elements before folding in local edits, mirroring the
-    // markdown resolver's "seed from remote, then reconcile local on top".
+    // First-ever conflict: seed the CRDT from remote before folding in local edits.
     if (yElements.size === 0) {
       doc.transact(() => {
         for (const element of remote.sceneData.elements) yElements.set(element.id, element);
@@ -55,9 +50,8 @@ export async function resolveExcalidrawConflict(ctx: ExcalidrawConflictContext):
     const mergedUpdate = Y.encodeStateAsUpdate(doc);
     await transport.putRoomStateSnapshot(wireRelPath, mergedUpdate);
 
-    // appState (viewport position, selected tool, zoom, ...) is per-device
-    // UI state, not meaningfully mergeable element-by-element -- keep it,
-    // and the rest of the shell (frontmatter, Text Elements section), from
+    // appState (viewport, tool, zoom) is per-device UI state, not
+    // meaningfully mergeable -- keep it and the rest of the shell from
     // whichever copy was edited most recently.
     const newerShell: ExcalidrawFileParts = localMtime >= remoteMtime ? local : remote;
     const mergedParts: ExcalidrawFileParts = {

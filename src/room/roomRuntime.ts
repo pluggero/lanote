@@ -8,6 +8,7 @@ import type LANotePlugin from '../main';
 import { findRoomById } from './roomLookup';
 import { teardownSyncSession } from './sessionTeardown';
 import { reconnectAll } from '../collab/collabSession';
+import { teardownCanvasCardSessionsForRoom } from '../collab/canvasCardSession';
 import { updateStatusBar } from '../collab/statusBar';
 
 export async function buildRuntimeForRoom(plugin: LANotePlugin, kind: 'hosted' | 'joined', room: HostedRoom | JoinedRoom): Promise<void> {
@@ -17,7 +18,7 @@ export async function buildRuntimeForRoom(plugin: LANotePlugin, kind: 'hosted' |
   plugin.roomRuntimes.set(room.id, { kind, roomKeys, configSyncEngine });
 }
 
-/** Disconnects every open-file collab session within this room's folder and tears down its runtime. Does not touch settings or local files. */
+/** Disconnects every open-file collab session and canvas card session within this room's folder and tears down its runtime. Does not touch settings or local files. */
 export async function teardownRuntimeForRoom(plugin: LANotePlugin, localRoomId: string): Promise<void> {
   const match = findRoomById(plugin, localRoomId);
   if (match) {
@@ -26,6 +27,7 @@ export async function teardownRuntimeForRoom(plugin: LANotePlugin, localRoomId: 
         await teardownSyncSession(plugin, path, sync);
       }
     }
+    await teardownCanvasCardSessionsForRoom(plugin, match.room.sharedFolder);
   }
   plugin.roomRuntimes.delete(localRoomId);
   plugin.backgroundSyncDebouncers.delete(localRoomId);

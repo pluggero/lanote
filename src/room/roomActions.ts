@@ -9,6 +9,7 @@ import { findRoomById, assertNoFolderCollision, syncRoom } from './roomLookup';
 import { buildRuntimeForRoom, teardownRuntimeForRoom } from './roomRuntime';
 import { teardownSyncSession } from './sessionTeardown';
 import { reconnectAll } from '../collab/collabSession';
+import { teardownCanvasCardSessionsForRoom } from '../collab/canvasCardSession';
 import { updateStatusBar } from '../collab/statusBar';
 
 export async function createRoom(plugin: LANotePlugin, sharedFolder: string): Promise<HostedRoom> {
@@ -135,6 +136,7 @@ export async function reconstructDatabase(plugin: LANotePlugin, localRoomId: str
       if (!isWithinSharedFolder(match.room.sharedFolder, path)) continue;
       await teardownSyncSession(plugin, path, sync);
     }
+    await teardownCanvasCardSessionsForRoom(plugin, match.room.sharedFolder);
 
     // 2. Clear this room's CRDT snapshots on the server (files themselves are untouched)
     await runtime.configSyncEngine.reconstructRoom();

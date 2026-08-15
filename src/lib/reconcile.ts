@@ -1,10 +1,8 @@
 import * as Y from 'yjs';
 
 /**
- * Reconciles the content of a Y.Text CRDT with a target plain text string.
- * Uses a highly efficient common-prefix/common-suffix matching algorithm
- * to apply minimal edits (delete + insert), thereby preserving remote cursor
- * position indicators and maximizing performance.
+ * Reconciles a Y.Text CRDT with a target plain text string via minimal
+ * common-prefix/suffix delete+insert, preserving remote cursor positions.
  */
 export function reconcileYText(ytext: Y.Text, newText: string): void {
   const oldText = ytext.toString();
@@ -44,12 +42,9 @@ export function reconcileYText(ytext: Y.Text, newText: string): void {
 }
 
 /**
- * Reconciles the entries of a Y.Map with a target array of already-merged
- * items, each identified by its own `id` field (e.g. Excalidraw scene
- * elements). Only `.set()`s entries whose serialized value actually
- * changed, and removes entries absent from `merged`, inside one
- * transaction -- the Y.Text equivalent of reconcileYText's minimal-diff
- * approach, but for keyed CRDT maps instead of ordered text.
+ * Reconciles a Y.Map with a target array of already-merged items keyed by
+ * `id`: `.set()`s only entries whose value actually changed, removes
+ * entries absent from `merged`, all in one transaction.
  */
 export function reconcileYElements(yElements: Y.Map<any>, merged: Array<{ id: string }>): void {
   const mergedById = new Map(merged.map(item => [item.id, item]));

@@ -6,16 +6,11 @@ function isNewerElement(candidate: ExcalidrawElementLike, existing: ExcalidrawEl
 }
 
 /**
- * Merges two element arrays from the same drawing into one, keeping
- * exactly one entry per element id. Mirrors Excalidraw's own official
- * real-time-collaboration reconciliation: the element with the higher
- * `version` wins; if both sides independently reached the same version
- * number, `versionNonce` (a random per-edit tiebreaker) decides, so every
- * peer computes the identical winner from the identical two candidates. A
- * deleted element (`isDeleted: true`) is kept in the result rather than
- * dropped -- there's no special-casing of `isDeleted` here at all, so a
- * delete on one peer can't be silently resurrected by a concurrent edit to
- * the same element elsewhere.
+ * Merges two element arrays into one entry per id, mirroring Excalidraw's
+ * own collab reconciliation: higher `version` wins, `versionNonce` (random
+ * per-edit tiebreaker) breaks ties. `isDeleted: true` elements aren't
+ * special-cased, so a delete can't be silently resurrected by a concurrent
+ * edit elsewhere.
  */
 export function reconcileElementArrays(
   a: ExcalidrawElementLike[],
@@ -48,24 +43,12 @@ const TEXT_ELEMENTS_SECTION = /(## Text Elements\n)([\s\S]*?)(?=\n%%|\n## |$)/;
 const TEXT_ELEMENT_LINE = /^(.*) \^([A-Za-z0-9_-]+)$/;
 
 /**
- * Rewrites the text portion of each `## Text Elements` line in
- * `shellPrefix` to match the corresponding element's `.text` in `merged`.
- *
- * The Excalidraw plugin parses these `<text> ^<elementId>` lines on file
- * load and overwrites the matching element's `.text`/`.originalText` with
- * them (see the doc comment on ExcalidrawFileParts.shellPrefix in
- * codec.ts). `resolveExcalidrawConflict` picks `shellPrefix` -- and this
- * section along with it -- from whichever side has the newer mtime,
- * independent of which side's element won reconcileElementArrays above.
- * Without this function, that section can keep the pre-merge text of the
- * losing side, and the plugin then writes that text back over the correct
- * merge the next time any peer opens the file.
- *
- * Only replaces the text of a line whose id is already present in
- * `merged`; never adds, removes, or reorders lines. Leaves a line
- * untouched if its merged element's `.text` contains `\n`, since this
- * line-based format has no way to represent it and this function doesn't
- * reformat the section, only substitutes single-line text values.
+ * Rewrites each `## Text Elements` line's text in `shellPrefix` to match
+ * the corresponding element's `.text` in `merged` (see codec.ts's
+ * ExcalidrawFileParts.shellPrefix doc for why this section must stay in
+ * sync with the merged elements). Only substitutes existing lines' text --
+ * never adds/removes/reorders -- and skips a line whose merged text
+ * contains `\n`, since this line-based format can't represent that.
  */
 export function patchTextElementsMirror(shellPrefix: string, merged: ExcalidrawElementLike[]): string {
   const byId = new Map(merged.map(element => [element.id, element]));

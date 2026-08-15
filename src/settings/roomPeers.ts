@@ -7,13 +7,7 @@ export interface RoomPeer {
   color: string;
 }
 
-/**
- * Peers currently visible for a room. This is derived from per-open-file Yjs
- * awareness (the same source `updateStatusBar()` and the old global
- * "Connected Collaborators" list used) -- there is no room-wide presence
- * channel independent of open files, so a peer only shows up here if they
- * currently have a file open within this room's shared folder.
- */
+/** Peers currently visible for a room, derived from per-open-file Yjs awareness -- there's no room-wide presence channel, so a peer only shows if they have a file open in this room's folder. */
 export function getRoomPeers(plugin: LANotePlugin, room: HostedRoom | JoinedRoom): RoomPeer[] {
   const peers = new Map<string, RoomPeer>();
   for (const [path, sync] of plugin.activeSyncs) {

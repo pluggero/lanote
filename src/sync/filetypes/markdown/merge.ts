@@ -17,15 +17,11 @@ export interface MarkdownConflictContext {
 }
 
 /**
- * Automatically merges a conflicting note via its Yjs room-state history:
- * fetches the last CRDT snapshot (if any), reconciles local disk content
- * into it, and pushes the merged result back. Falls back to silent
- * latest-mtime-wins if the merge itself fails.
- *
- * Returns false if a live-collab session raced in and became the
- * authoritative owner of this file partway through the merge -- the caller
- * should skip this file entirely (no action counted) rather than write a
- * snapshot/file body derived from what may now be stale data.
+ * Merges a conflicting note via its Yjs room-state history: fetches the
+ * CRDT snapshot, reconciles local disk content into it, pushes the merged
+ * result back. Falls back to latest-mtime-wins on failure. Returns false if
+ * a live session raced in and became authoritative owner partway through --
+ * the caller should skip this file rather than write data that may now be stale.
  */
 export async function resolveMarkdownConflict(ctx: MarkdownConflictContext): Promise<boolean> {
   const { app, transport, wireRelPath, vaultRelPath, localData, remoteData, localMtime, remoteMtime, getActiveLivePaths } = ctx;
@@ -39,10 +35,8 @@ export async function resolveMarkdownConflict(ctx: MarkdownConflictContext): Pro
       Y.applyUpdate(doc, snapshot);
     }
 
-    // A live session can start between the top-of-loop check and here --
-    // that GET above already raced it once. Bail out of the merge entirely
-    // rather than writing a snapshot/file body derived from a read that may
-    // already be stale; the live session is now the authoritative owner.
+    // A live session can start between the top-of-loop check and here.
+    // Bail rather than write data derived from a now-possibly-stale read.
     if (getActiveLivePaths().has(wireRelPath)) return false;
 
     const decoder = new TextDecoder('utf-8');
@@ -57,15 +51,10 @@ export async function resolveMarkdownConflict(ctx: MarkdownConflictContext): Pro
     }
 
     if (ytext.toString() === localText) {
-      // Room-state already has this exact content -- a live
-      // session already correctly converged it there. This
-      // "conflict" is really just a stale file-body manifest
-      // entry (live edits never re-upload the body). Re-upload
-      // to align the manifest and stop here: POSTing a re-
-      // derived room-state snapshot here has no compare-and-
-      // swap on the server, so doing it unconditionally risks
-      // clobbering a newer update a live session pushes in the
-      // gap between our GET above and a POST here.
+      // Room-state already matches -- this "conflict" is just a stale
+      // file-body manifest entry (live edits never re-upload the body).
+      // Re-upload to align it and stop; the server has no compare-and-swap,
+      // so re-POSTing room-state here risks clobbering a newer live update.
       const encoder = new TextEncoder();
       await transport.uploadFile(wireRelPath, encoder.encode(localText).buffer, Date.now());
       console.log(`[LANote] Realigned stale file-body manifest for note: ${wireRelPath}`);

@@ -31,9 +31,13 @@ export interface LANoteSettings {
   joinedRooms: JoinedRoom[];
   // Per hosted/joined room id, the mtime this device last confirmed was in
   // sync with the server for a given wireRelPath. See sync/syncBaseline.ts
-  // for the mechanism and filetypes/excalidraw/syncBaseline.ts for which
-  // file types currently populate it and why.
+  // for the mechanism and sync/filetypes/syncBaseline.ts for which file
+  // types currently populate it and why.
   syncBaselines: Record<string, Record<string, number>>;
+  // Per hosted/joined room id, per canvas wireRelPath, the node/edge ids
+  // this device last confirmed as merged. See
+  // sync/filetypes/canvas/idBaseline.ts.
+  canvasIdBaselines: Record<string, Record<string, { nodeIds: string[]; edgeIds: string[] }>>;
   // Bumped on breaking settings-shape changes so loadSettings() can migrate
   // old data.json files forward. 2 = multi-room hostedRooms/joinedRooms model.
   settingsSchemaVersion: number;
@@ -47,6 +51,7 @@ export const DEFAULT_SETTINGS: LANoteSettings = {
   hostedRooms: [],
   joinedRooms: [],
   syncBaselines: {},
+  canvasIdBaselines: {},
   settingsSchemaVersion: 2,
 }
 
@@ -77,6 +82,7 @@ export async function loadSettings(plugin: LANotePlugin): Promise<void> {
   plugin.settings.hostedRooms ??= [];
   plugin.settings.joinedRooms ??= [];
   plugin.settings.syncBaselines ??= {};
+  plugin.settings.canvasIdBaselines ??= {};
 }
 
 export async function saveSettings(plugin: LANotePlugin): Promise<void> {

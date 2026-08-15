@@ -23,28 +23,22 @@ export interface ExcalidrawSceneData {
 }
 
 export interface ExcalidrawFileParts {
-  // Everything in the file up to and including the `\`\`\`compressed-json\n`
-  // fence-open line: YAML frontmatter, the instructional banner, and the
-  // `## Text Elements` section (lines of the form `<text> ^<elementId>`).
-  // Kept as an opaque, verbatim string here -- but the Excalidraw plugin
-  // parses this section on load and overwrites the matching element's
-  // `.text`/`.originalText` with it (confirmed against the plugin's own
-  // main.js), so a merge that only reconciles sceneData.elements and
-  // copies this section verbatim from one side can leave a stale line
-  // here that silently reverts a correctly-merged element's text the next
-  // time any peer opens the file. patchTextElementsMirror in
-  // reconcileElements.ts corrects exactly that.
+  // Everything up to and including the `\`\`\`compressed-json\n` fence-open
+  // line: frontmatter, banner, and the `## Text Elements` section (`<text>
+  // ^<elementId>` lines). Kept opaque here, but the Excalidraw plugin
+  // re-parses this section on load and overwrites the matching element's
+  // `.text` with it -- copying it verbatim from one side after a merge can
+  // revert a correctly-merged element's text. patchTextElementsMirror in
+  // reconcileElements.ts corrects that.
   shellPrefix: string;
   // The closing `\`\`\`` fence line onward (typically just `\`\`\`\n%%`).
   shellSuffix: string;
   sceneData: ExcalidrawSceneData;
 }
 
-// Matches the plugin's own line width for the base64 payload inside the
-// fence (verified against demo/example-files/*.excalidraw.md: 256 chars
-// per line, blank line between chunks). Not load-bearing for correctness
-// -- base64 decoding ignores whitespace -- only for cosmetic parity with
-// files the Excalidraw plugin itself writes.
+// Matches the Excalidraw plugin's own line width (256 chars, blank line
+// between chunks) for cosmetic parity -- not load-bearing, since base64
+// decoding ignores whitespace.
 const BASE64_WRAP_WIDTH = 256;
 
 const COMPRESSED_JSON_FENCE = /```compressed-json\n([\s\S]*?)\n```/;

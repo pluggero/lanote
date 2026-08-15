@@ -80,23 +80,13 @@ const collabTheme = EditorView.theme({
 });
 
 /**
- * Returns the full collaboration extension bundle for LANote.
- *
- * Uses the battle-tested y-codemirror.next library for cursor/selection sync.
- * Cursor positions are stored as Y.RelativePosition (CRDT-safe), which means
- * they automatically survive concurrent edits without any manual remapping.
- *
- * This module only ever sees already-decrypted Y.Text/Awareness data -- the
- * encrypting WebSocket wrapper (encryptedSocket.ts) does its work below the
- * y-websocket transport layer, so nothing here needs to know about crypto.
- *
- * @param ytext   - The Y.Text instance shared across peers
- * @param awareness - The Yjs Awareness instance (must have user.name & user.color set)
- * @param undoManager - Optional explicit Y.UndoManager. Callers that manage a
- *   session's lifecycle (main.ts) should always pass one they own and
- *   destroy themselves -- yCollab() otherwise constructs a fresh one on
- *   every call, which only self-cleans when the whole Y.Doc is destroyed,
- *   not when this extension is torn down/rebuilt on its own.
+ * The collaboration extension bundle: yCollab (cursor/selection sync via
+ * CRDT-safe Y.RelativePosition) plus the theme above. Only sees
+ * already-decrypted Y.Text/Awareness data -- encryption happens below the
+ * transport layer (encryptedSocket.ts). Callers that own a session's
+ * lifecycle should pass an explicit `undoManager` they destroy themselves;
+ * yCollab()'s own default only self-cleans when the whole Y.Doc is
+ * destroyed, not when this extension is torn down/rebuilt on its own.
  */
 export function collaborationExtension(ytext: Y.Text, awareness: any, undoManager?: Y.UndoManager): Extension[] {
   return [
