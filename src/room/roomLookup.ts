@@ -37,6 +37,13 @@ export function findHostedOrJoinedRoomForPath(plugin: LANotePlugin, path: string
  * live session already owns -- see syncConfig()'s own doc comment for why
  * that matters (an uncoordinated second writer of the same room-state
  * causes a runaway conflict loop, not a one-time glitch).
+ *
+ * Also includes the owning file of any canvas card with a connected live
+ * session (plugin.activeCardSyncs): the card only guarantees disk
+ * persistence via a single write on focus-loss, so the file must stay
+ * excluded until then. Gated on `wsconnected`, not mere session existence,
+ * so a dropped connection (no reconnect attempt) falls back to background
+ * merge coverage instead of excluding the file indefinitely.
  */
 export function activeWireRelPathsForRoom(plugin: LANotePlugin, localRoomId: string): Set<string> {
   const match = findRoomById(plugin, localRoomId);
@@ -45,6 +52,11 @@ export function activeWireRelPathsForRoom(plugin: LANotePlugin, localRoomId: str
   for (const vaultRelPath of plugin.activeSyncs.keys()) {
     if (isWithinSharedFolder(match.room.sharedFolder, vaultRelPath)) {
       paths.add(toWireRelPath(match.room.sharedFolder, vaultRelPath));
+    }
+  }
+  for (const binding of plugin.activeCardSyncs.values()) {
+    if (binding.sync.provider?.wsconnected && isWithinSharedFolder(match.room.sharedFolder, binding.vaultRelPath)) {
+      paths.add(toWireRelPath(match.room.sharedFolder, binding.vaultRelPath));
     }
   }
   return paths;

@@ -79,11 +79,11 @@ export function reconnectAll(plugin: LANotePlugin) {
 }
 
 export async function syncFile(plugin: LANotePlugin, file: TFile) {
-  // Excalidraw drawings are merged element-wise via the background sync
-  // path (sync/filetypes/excalidraw/), not this Y.Text session. Without
-  // this guard, opening one via Obsidian's "Open as Markdown" would
-  // character-diff its compressed scene data and corrupt it.
-  if (detectFileType(file.path) === 'excalidraw') return;
+  // Excalidraw and Canvas are merged element-wise via the background sync
+  // path, not this whole-file Y.Text session -- forcing either open via
+  // "Open as Markdown" would otherwise character-diff structured JSON.
+  const fileType = detectFileType(file.path);
+  if (fileType === 'excalidraw' || fileType === 'canvas') return;
 
   const match = findHostedOrJoinedRoomForPath(plugin, file.path);
   if (!match) return;
@@ -203,20 +203,12 @@ export async function syncFile(plugin: LANotePlugin, file: TFile) {
     }
 
     if (!provider.synced) {
-      // No live peer ever answered -- hydrate from the last encrypted
-      // snapshot (a dumb relay has no server-side doc to answer a
-      // sync-step1 with if we're the first device online for this note),
-      // then treat local disk as the source of truth on top of that: seed
-      // if still empty, or merge in genuine offline edits.
-      //
-      // Deliberately skipped entirely once a live peer HAS answered:
-      // y-websocket rebroadcasts every Y.applyUpdate -- even our
-      // HYDRATE_ORIGIN-tagged ones -- to live peers as a normal edit (it
-      // only recognizes its own provider object as "self", not our origin
-      // marker). A hydrated snapshot is a separate CRDT history from
-      // whatever the live peer already has, so that merge doesn't
-      // deduplicate, it duplicates. A live peer's real sync-step2 reply is
-      // the correct, non-duplicating way to catch up instead.
+      // No live peer answered -- hydrate from the last encrypted snapshot,
+      // then treat local disk as source of truth on top (seed if empty,
+      // merge offline edits otherwise). Skipped once a peer HAS answered:
+      // y-websocket rebroadcasts even our HYDRATE_ORIGIN-tagged updates to
+      // live peers as normal edits, so applying a separate CRDT history here
+      // would duplicate rather than deduplicate against their real reply.
       try {
         const snapshot = await configSyncEngine.getRoomStateSnapshot(wireRelPath);
         if (!isCurrentSync() || provider.synced) return;
@@ -276,15 +268,10 @@ export async function syncFile(plugin: LANotePlugin, file: TFile) {
       // Trigger background shared-folder sync if not already syncing
       syncRoom(plugin, match.room.id, true);
 
-      // provider.on('sync') only fires once a *live peer* replies with
-      // sync-step2 -- our relay is deliberately dumb and never answers
-      // that itself, so if nobody else currently has this note open,
-      // 'sync' would never fire even though the connection is genuinely
-      // healthy. Our own hydration (fetch + decrypt /api/room-state) is
-      // authoritative on its own and doesn't need a peer's reply, so
-      // initialize as soon as we're connected; initializeCollab() is
-      // idempotent (hasInitialized guard) and Yjs merges in any later
-      // peer reply on top with no correctness risk.
+      // provider.on('sync') only fires once a live peer replies -- our dumb
+      // relay never does, so it'd never fire with no one else online. Our
+      // own hydration is authoritative on its own; initializeCollab() is
+      // idempotent and merges in any later peer reply with no risk.
       initializeCollab(true);
     } else if (status === 'connecting') {
       plugin.connectionStatus = 'connecting';
@@ -343,15 +330,10 @@ export function getDiskSyncDebouncer(plugin: LANotePlugin, path: string): (file:
       const sync = plugin.activeSyncs.get(f.path);
       if (!sync) return;
 
-      // While the file is open, ySync (collabExtension.ts) already applies
-      // every keystroke into ytext synchronously -- it's always authoritative
-      // for the live editor, no disk round-trip needed. This handler's async
-      // read can go stale mid-flight if the user keeps typing during the
-      // await; reconciling from that stale snapshot would then force ytext
-      // back to older content, which is what caused text to get duplicated/
-      // corrupted while actively writing. Only reconcile from disk for
-      // sessions that aren't the focused pane (e.g. a background configSync
-      // pull landing while this note isn't open).
+      // While open, ySync applies every keystroke into ytext synchronously --
+      // no disk round-trip needed, and this handler's async read can go
+      // stale mid-typing, forcing ytext back to older content. Only
+      // reconcile from disk for sessions that aren't the focused pane.
       let isOpen = false;
       plugin.app.workspace.iterateAllLeaves((leaf) => {
         if (leaf.view instanceof MarkdownView && leaf.view.file?.path === f.path) isOpen = true;
@@ -370,19 +352,12 @@ export function getDiskSyncDebouncer(plugin: LANotePlugin, path: string): (file:
 }
 
 /**
- * A live session's relay room token is derived from the file's path (see
- * syncFile()'s fileRoomToken), and activeSyncs is keyed by path too.
+ * A live session's relay room token is derived from the file's path, and
  * Obsidian mutates the TFile's .path in place on rename without firing
- * active-leaf-change, so a session that was live under oldPath would
- * otherwise keep talking to that now-stale room token forever -- nobody
- * else will ever reconnect to it -- while nothing creates a fresh session
- * under the new path. Tear the stale entry down and rebuild just this
- * file's session under its new path. Deliberately scoped to this one file
- * rather than reconnectAll(): that tears down and rebuilds every
- * currently-open file's session, which turned a single rename/move into a
- * burst of unrelated disconnects (each hitting the same close-in-flight
- * race disconnectGracefully already works around) and made otherwise-
- * healthy files' live sync flaky too.
+ * active-leaf-change -- without this, a session live under oldPath would
+ * keep talking to that stale token forever. Tears down and rebuilds just
+ * this file's session, not via reconnectAll(): that would burst-disconnect
+ * every open file over one rename.
  */
 export function handleFileRename(plugin: LANotePlugin, file: TAbstractFile, oldPath: string): void {
   const matchNew = findHostedOrJoinedRoomForPath(plugin, file.path);

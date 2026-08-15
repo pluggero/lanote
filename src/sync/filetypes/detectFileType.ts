@@ -1,4 +1,4 @@
-export type SupportedFileType = 'excalidraw' | 'markdown' | 'json';
+export type SupportedFileType = 'excalidraw' | 'markdown' | 'json' | 'canvas';
 
 /**
  * Classifies a wire-relative path by the file-type-specific conflict
@@ -9,6 +9,7 @@ export type SupportedFileType = 'excalidraw' | 'markdown' | 'json';
 export function detectFileType(wireRelPath: string): SupportedFileType | null {
   if (wireRelPath.toLowerCase().endsWith('.excalidraw.md')) return 'excalidraw';
   if (wireRelPath.endsWith('.md')) return 'markdown';
+  if (wireRelPath.endsWith('.canvas')) return 'canvas';
   if (wireRelPath.endsWith('.json')) return 'json';
   return null;
 }

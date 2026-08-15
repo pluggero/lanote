@@ -4,15 +4,12 @@ import type { SyncSession } from '../lib/types';
 import type LANotePlugin from '../main';
 
 /**
- * Our relay is a dumb byte pipe with no server-side Yjs (see server.py) --
- * unlike a classic y-websocket server, it can't notice a peer disconnect
- * and broadcast an awareness removal to everyone else itself. We have to
- * say so ourselves before closing, or other peers keep seeing our last
- * cursor position until their own 30s Yjs awareness timeout eventually
- * clears it. Give the encrypted send a moment to actually go out first:
- * EncryptingWebSocket.send() (encryptedSocket.ts) queues through an async
- * encrypt step, so closing immediately after setLocalState(null) risks
- * the socket closing before that message is even transmitted.
+ * Our relay is a dumb byte pipe with no server-side Yjs, so it can't
+ * broadcast an awareness removal on disconnect itself -- we announce it
+ * ourselves before closing, or peers keep seeing our last cursor until
+ * their own 30s awareness timeout. The wait gives EncryptingWebSocket's
+ * async encrypt step (encryptedSocket.ts) a moment to actually send it
+ * before the socket closes.
  */
 export async function disconnectGracefully(sync: { awareness: Awareness, provider?: WebsocketProvider, flushSnapshot?: () => void }, opts: { flush?: boolean } = {}): Promise<void> {
   if (opts.flush !== false) sync.flushSnapshot?.();
@@ -29,13 +26,10 @@ export async function disconnectGracefully(sync: { awareness: Awareness, provide
 }
 
 /**
- * Detaches everything this session registered directly on its Y.Doc/Y.Text
- * that doc.destroy() itself won't clean up: the disk-writeback ytext.observe
- * listener (Y.Doc.destroy() only clears doc.on(...) listeners, not Y.Text-level
- * observers) and every Y.UndoManager created for a bound editor leaf (an
- * UndoManager only self-destroys once its own doc is destroyed -- calling it
- * explicitly here means it never outlives an individual bind/rebind either).
- * Always call this before sync.doc.destroy().
+ * Detaches everything doc.destroy() won't clean up itself: the ytext.observe
+ * disk-writeback listener (doc.destroy() only clears doc.on(...) listeners,
+ * not Y.Text-level observers) and every bound leaf's Y.UndoManager (which
+ * otherwise only self-destroys with the whole doc). Call before sync.doc.destroy().
  */
 export function disposeSyncSession(sync: SyncSession): void {
   if (sync.ytextObserver) {

@@ -9,8 +9,11 @@ import { detectFileType } from './filetypes/detectFileType';
 import { resolveMarkdownConflict } from './filetypes/markdown/merge';
 import { resolveJsonConflict } from './filetypes/json/merge';
 import { resolveExcalidrawConflict } from './filetypes/excalidraw/merge';
-import { needsSyncBaseline } from './filetypes/excalidraw/syncBaseline';
+import { resolveCanvasConflict } from './filetypes/canvas/merge';
+import { CanvasIdBaselineStore, recordKnownIdsFromBytes } from './filetypes/canvas/idBaseline';
+import { needsSyncBaseline } from './filetypes/syncBaseline';
 import { SyncBaselineStore } from './syncBaseline';
+import { flushStores } from './perRoomSettingsStore';
 
 export class ConfigSyncEngine {
   // Instance-level (not static): with multi-room support, each room gets its
@@ -19,6 +22,7 @@ export class ConfigSyncEngine {
   private transport: SyncTransport;
   private app: App;
   private baseline: SyncBaselineStore;
+  private canvasIds: CanvasIdBaselineStore;
 
   constructor(
     private plugin: LANotePlugin,
@@ -33,6 +37,7 @@ export class ConfigSyncEngine {
     this.app = plugin.app;
     this.transport = new SyncTransport(serverUrl, roomKeys);
     this.baseline = new SyncBaselineStore(plugin, roomId);
+    this.canvasIds = new CanvasIdBaselineStore(plugin, roomId);
   }
 
   /**
@@ -91,23 +96,14 @@ export class ConfigSyncEngine {
    * end-to-end encrypted; the server only ever sees ciphertext, sizes, and relative paths.
    */
   /**
-   * @param getActiveLivePaths Returns the wire-relative paths currently owned by an
-   * active live-collab session (main.ts's activeSyncs) elsewhere in the plugin, evaluated
-   * fresh -- not a single Set snapshotted before this call -- because this scan awaits a
-   * disk/network round trip per file and can run for seconds; a file can go live (or stop
-   * being live) partway through. Skipped only for the conflict-resolution branch below
-   * (both a local and remote copy already exist) -- that session is already the
-   * authoritative, correctly-synchronized owner of that file's content and room-state
-   * snapshot, so without this exclusion this REST-based scan and the live session would
-   * independently read-modify-write the same room-state key with no coordination: each
-   * side's write reintroduces a mismatch the other detects as a fresh "conflict" next
-   * time, causing a runaway loop of CRDT merges that duplicates/corrupts content instead
-   * of converging. Re-checked again immediately before the merge write below, since a
-   * session can also start during the awaits in between. The initial-upload branch
-   * (local-only, i.e. a brand-new file) is deliberately NOT covered by this exclusion: a
-   * live session never touches the file-body manifest itself, so that upload is the only
-   * thing that ever makes a newly created, actively open file visible to other peers at
-   * all.
+   * @param getActiveLivePaths Wire-relative paths an active live-collab session
+   * (activeSyncs) already owns, evaluated fresh on each call since this scan can run for
+   * seconds and a file can go live partway through. Skipped only where both a local and
+   * remote copy exist: without it, this REST scan and the live session would
+   * independently read-modify-write the same room-state key, causing a runaway conflict
+   * loop instead of converging. Not applied to local-only uploads -- a live session never
+   * touches the file-body manifest, so that upload is the only way a newly created open
+   * file ever becomes visible to peers.
    * @param onActiveFileDeletedRemotely Called on a stale-deletion path that's still open locally, before it's deleted.
    */
   public async syncConfig(
@@ -184,16 +180,13 @@ export class ConfigSyncEngine {
           }
 
           console.log(`[LANote] [diag] syncConfig ${wireRelPath}: local-only, not a stale deletion (deletedAt=${deletedAt}, localMtime=${local.stat.mtime}) -> uploading`);
-          // File exists only locally -> Upload. Not skipped for
-          // activeLivePaths: a live-collab session never touches the file-
-          // body manifest itself (only the room-state CRDT snapshot), so
-          // this is the only thing that ever puts a brand-new file on the
-          // server -- skipping it here would leave a just-created, actively
-          // open note invisible to every other peer for as long as it stays
-          // open.
+          // Not skipped for activeLivePaths: a live session never touches
+          // the file-body manifest, so this upload is the only way a
+          // just-created, actively open file ever becomes visible to peers.
           const data = await this.app.vault.adapter.readBinary(local.path);
           await this.transport.uploadFile(wireRelPath, data, local.stat.mtime);
           if (needsSyncBaseline(wireRelPath)) this.baseline.set(wireRelPath, local.stat.mtime);
+          if (detectFileType(wireRelPath) === 'canvas') recordKnownIdsFromBytes(this.canvasIds, wireRelPath, data);
           actionsCount++;
         } else if (!local && remote) {
           console.log(`[LANote] [diag] syncConfig ${wireRelPath}: remote-only -> downloading`);
@@ -202,6 +195,7 @@ export class ConfigSyncEngine {
           const data = await this.transport.downloadFile(wireRelPath);
           await writeBinaryFile(this.app, vaultRelPath, data, remote.mtime);
           if (needsSyncBaseline(wireRelPath)) this.baseline.set(wireRelPath, remote.mtime);
+          if (detectFileType(wireRelPath) === 'canvas') recordKnownIdsFromBytes(this.canvasIds, wireRelPath, data);
           actionsCount++;
         } else if (local && remote) {
           if (getActiveLivePaths().has(wireRelPath)) continue;
@@ -261,6 +255,7 @@ export class ConfigSyncEngine {
                 localData, remoteData, localMtime: local.stat.mtime, remoteMtime: remote.mtime,
               });
               if (needsSyncBaseline(wireRelPath)) this.baseline.set(wireRelPath, Math.max(local.stat.mtime, remote.mtime));
+              if (detectFileType(wireRelPath) === 'canvas') recordKnownIdsFromBytes(this.canvasIds, wireRelPath, localData);
             } else {
               // Conflict: Contents are different and timestamps differ.
               console.log(`[LANote] [diag] syncConfig ${wireRelPath}: conflict (localMtime=${local.stat.mtime}, remoteMtime=${remote.mtime})`);
@@ -278,6 +273,27 @@ export class ConfigSyncEngine {
                   });
                   if (needsSyncBaseline(wireRelPath)) {
                     // Re-stat rather than assume a value: resolveExcalidrawConflict
+                    // computes its own merged mtime internally and doesn't return it.
+                    const postMergeStat = await this.app.vault.adapter.stat(local.path);
+                    if (postMergeStat) this.baseline.set(wireRelPath, postMergeStat.mtime);
+                  }
+                  actionsCount++;
+                  break;
+                }
+                case 'canvas': {
+                  await resolveCanvasConflict({
+                    app: this.app,
+                    transport: this.transport,
+                    wireRelPath,
+                    vaultRelPath,
+                    localData,
+                    remoteData,
+                    localMtime: local.stat.mtime,
+                    remoteMtime: remote.mtime,
+                    canvasIds: this.canvasIds,
+                  });
+                  if (needsSyncBaseline(wireRelPath)) {
+                    // Re-stat rather than assume a value: resolveCanvasConflict
                     // computes its own merged mtime internally and doesn't return it.
                     const postMergeStat = await this.app.vault.adapter.stat(local.path);
                     if (postMergeStat) this.baseline.set(wireRelPath, postMergeStat.mtime);
@@ -334,7 +350,7 @@ export class ConfigSyncEngine {
         }
       }
 
-      await this.baseline.flush();
+      await flushStores(this.plugin, [this.baseline, this.canvasIds]);
 
       if (!silent) new Notice(actionsCount > 0 ? `Sync complete (${actionsCount} updated)` : 'Shared folder in sync.', 2000);
       // Silent (periodic-sync) passes skip the Notice above, so log instead -- but only when something actually changed, since this can run every few seconds.

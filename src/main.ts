@@ -11,6 +11,7 @@ import {
 } from './room/roomActions';
 import { syncFile, cleanupClosedFiles, reconnectAll, getDiskSyncDebouncer, handleFileRename, abandonActiveSync, abandonAndCloseFile } from './collab/collabSession';
 import { detachStaleEditorBinding, collabCompartment } from './collab/editorBinding';
+import { syncActiveCanvasCard, teardownAllCanvasCardSessions, type CanvasCardBinding } from './collab/canvasCardSession';
 import { updateStatusBar } from './collab/statusBar';
 import { toggleSimulator } from './collab/simulator';
 import { cleanupAndMergeConflicts } from './sync/conflictMerge';
@@ -20,11 +21,13 @@ import { consumeSyncDrivenDeletion } from './lib/vaultFs';
 export default class LANotePlugin extends Plugin {
   settings!: LANoteSettings;
   public activeSyncs: Map<string, SyncSession> = new Map();
-  // Non-persisted runtime state (derived keys + sync engine) for every room
-  // that's currently live -- every sharingActive hosted room, and every
-  // joined room. Keyed by the room's stable local id (HostedRoom.id /
-  // JoinedRoom.id), not the crypto-derived roomId, since the latter changes
-  // on renew while the list entry must persist.
+  // One live session per actively-focused canvas text card, keyed by
+  // "vaultRelPath\0nodeId" (canvasCardSession.ts's cardKey). Separate from
+  // activeSyncs since a card has no TFile/leaf of its own to key by.
+  public activeCardSyncs: Map<string, CanvasCardBinding> = new Map();
+  // Non-persisted runtime state (derived keys + sync engine) for every
+  // currently-live room, keyed by stable local id (HostedRoom.id /
+  // JoinedRoom.id) rather than the crypto-derived roomId, which changes on renew.
   public roomRuntimes: Map<string, RoomRuntime> = new Map();
   public simulatorInterval: any = null;
   public statusBarItem: HTMLElement | null = null;
@@ -99,6 +102,10 @@ export default class LANotePlugin extends Plugin {
     const cleanupClosedFilesDebounced = debounce(() => cleanupClosedFiles(this), 300, true);
     this.registerEvent(this.app.workspace.on('layout-change', cleanupClosedFilesDebounced));
 
+    // Canvas cards have no per-card focus event, so their live session
+    // lifecycle is driven off real DOM focus instead (canvasCardSession.ts).
+    this.registerDomEvent(document, 'focusin', () => syncActiveCanvasCard(this));
+
     // Sync disk changes back into Yjs
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
@@ -163,6 +170,7 @@ export default class LANotePlugin extends Plugin {
       teardownSyncSession(this, path, sync);
     }
     this.activeSyncs.clear();
+    teardownAllCanvasCardSessions(this);
   }
 
   // Thin delegations to room/roomActions.ts, room/roomRuntime.ts, room/roomLookup.ts,
