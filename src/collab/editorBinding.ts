@@ -2,7 +2,7 @@ import { TFile, MarkdownView } from 'obsidian';
 import * as Y from 'yjs';
 import { EditorView } from '@codemirror/view';
 import { Compartment } from '@codemirror/state';
-import { collaborationExtension } from '../collabExtension';
+import { collaborationExtension } from './collabExtension';
 import type LANotePlugin from '../main';
 
 // Registered once via plugin.registerEditorExtension() in main.ts so it's part

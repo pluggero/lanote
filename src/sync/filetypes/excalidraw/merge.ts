@@ -1,6 +1,6 @@
 import { App } from 'obsidian';
 import * as Y from 'yjs';
-import { reconcileYElements } from '../../../reconcile';
+import { reconcileYElements } from '../../../lib/reconcile';
 import type { SyncTransport } from '../../syncTransport';
 import { commitMergedFile, resolveByLatestMtime } from '../../mtimeWins';
 import { parseExcalidrawMd, serializeExcalidrawMd, type ExcalidrawElementLike, type ExcalidrawFileParts } from './codec';

@@ -1,6 +1,6 @@
 import { App, PluginSettingTab } from 'obsidian';
 import type LANotePlugin from '../main';
-import type { HostedRoom, JoinedRoom } from '../settingsStore';
+import type { HostedRoom, JoinedRoom } from '../lib/settingsStore';
 import { renderProfileSection } from './ProfileSection';
 import { renderServerConnectionSection } from './ServerConnectionSection';
 import { renderCreateRoomSection } from './CreateRoomSection';

@@ -1,6 +1,6 @@
 import { App } from 'obsidian';
 import * as Y from 'yjs';
-import { reconcileYText } from '../../../reconcile';
+import { reconcileYText } from '../../../lib/reconcile';
 import type { SyncTransport } from '../../syncTransport';
 import { commitMergedFile, resolveByLatestMtime } from '../../mtimeWins';
 

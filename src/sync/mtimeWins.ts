@@ -1,5 +1,5 @@
 import { App } from 'obsidian';
-import { writeBinaryFile } from '../vaultFs';
+import { writeBinaryFile } from '../lib/vaultFs';
 import type { SyncTransport } from './syncTransport';
 
 export interface MtimeWinsContext {

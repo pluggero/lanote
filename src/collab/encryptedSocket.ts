@@ -1,4 +1,4 @@
-import { type RoomKeys, encryptBytes, decryptBytes, makeAAD } from './crypto';
+import { type RoomKeys, encryptBytes, decryptBytes, makeAAD } from '../lib/crypto';
 
 // y-websocket's WebsocketProvider accepts a `WebSocketPolyfill` class and talks
 // to it purely via property assignment (`.onopen`, `.onmessage`, `.onerror`,
