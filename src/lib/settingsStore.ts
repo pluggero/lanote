@@ -29,6 +29,11 @@ export interface LANoteSettings {
   syncIntervalSeconds: number;
   hostedRooms: HostedRoom[];
   joinedRooms: JoinedRoom[];
+  // Per hosted/joined room id, the mtime this device last confirmed was in
+  // sync with the server for a given wireRelPath. See sync/syncBaseline.ts
+  // for the mechanism and filetypes/excalidraw/syncBaseline.ts for which
+  // file types currently populate it and why.
+  syncBaselines: Record<string, Record<string, number>>;
   // Bumped on breaking settings-shape changes so loadSettings() can migrate
   // old data.json files forward. 2 = multi-room hostedRooms/joinedRooms model.
   settingsSchemaVersion: number;
@@ -41,6 +46,7 @@ export const DEFAULT_SETTINGS: LANoteSettings = {
   syncIntervalSeconds: DEFAULT_SYNC_INTERVAL_SECONDS,
   hostedRooms: [],
   joinedRooms: [],
+  syncBaselines: {},
   settingsSchemaVersion: 2,
 }
 
@@ -70,6 +76,7 @@ export async function loadSettings(plugin: LANotePlugin): Promise<void> {
   plugin.settings = Object.assign({}, DEFAULT_SETTINGS, raw);
   plugin.settings.hostedRooms ??= [];
   plugin.settings.joinedRooms ??= [];
+  plugin.settings.syncBaselines ??= {};
 }
 
 export async function saveSettings(plugin: LANotePlugin): Promise<void> {

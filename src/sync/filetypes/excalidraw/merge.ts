@@ -4,7 +4,7 @@ import { reconcileYElements } from '../../../lib/reconcile';
 import type { SyncTransport } from '../../syncTransport';
 import { commitMergedFile, resolveByLatestMtime } from '../../mtimeWins';
 import { parseExcalidrawMd, serializeExcalidrawMd, type ExcalidrawElementLike, type ExcalidrawFileParts } from './codec';
-import { reconcileElementArrays, mergeFilesMaps } from './reconcileElements';
+import { reconcileElementArrays, mergeFilesMaps, patchTextElementsMirror } from './reconcileElements';
 
 export interface ExcalidrawConflictContext {
   app: App;
@@ -61,7 +61,7 @@ export async function resolveExcalidrawConflict(ctx: ExcalidrawConflictContext):
     // whichever copy was edited most recently.
     const newerShell: ExcalidrawFileParts = localMtime >= remoteMtime ? local : remote;
     const mergedParts: ExcalidrawFileParts = {
-      shellPrefix: newerShell.shellPrefix,
+      shellPrefix: patchTextElementsMirror(newerShell.shellPrefix, merged),
       shellSuffix: newerShell.shellSuffix,
       sceneData: {
         ...newerShell.sceneData,

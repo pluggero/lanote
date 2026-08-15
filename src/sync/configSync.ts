@@ -1,4 +1,5 @@
 import { App, Notice } from 'obsidian';
+import type LANotePlugin from '../main';
 import { type RoomKeys, derivePathToken } from '../lib/crypto';
 import { ensureParentDirsExist, writeBinaryFile, deleteLocalFile } from '../lib/vaultFs';
 import { toWireRelPath, toVaultRelPath, shouldIgnore } from '../lib/syncPaths';
@@ -8,23 +9,30 @@ import { detectFileType } from './filetypes/detectFileType';
 import { resolveMarkdownConflict } from './filetypes/markdown/merge';
 import { resolveJsonConflict } from './filetypes/json/merge';
 import { resolveExcalidrawConflict } from './filetypes/excalidraw/merge';
+import { needsSyncBaseline } from './filetypes/excalidraw/syncBaseline';
+import { SyncBaselineStore } from './syncBaseline';
 
 export class ConfigSyncEngine {
   // Instance-level (not static): with multi-room support, each room gets its
   // own engine instance, and one room's sync shouldn't block another's.
   private isSyncing = false;
   private transport: SyncTransport;
+  private app: App;
+  private baseline: SyncBaselineStore;
 
   constructor(
-    private app: App,
+    private plugin: LANotePlugin,
     public serverUrl: string,
     private roomKeys: RoomKeys,
     // Vault-relative path of the folder being shared ("" means the whole vault).
     // Devices are allowed to store this folder under different local names --
     // everything on the wire uses paths relative to it, never the vault-absolute path.
-    public sharedFolder: string
+    public sharedFolder: string,
+    roomId: string
   ) {
+    this.app = plugin.app;
     this.transport = new SyncTransport(serverUrl, roomKeys);
+    this.baseline = new SyncBaselineStore(plugin, roomId);
   }
 
   /**
@@ -185,6 +193,7 @@ export class ConfigSyncEngine {
           // open.
           const data = await this.app.vault.adapter.readBinary(local.path);
           await this.transport.uploadFile(wireRelPath, data, local.stat.mtime);
+          if (needsSyncBaseline(wireRelPath)) this.baseline.set(wireRelPath, local.stat.mtime);
           actionsCount++;
         } else if (!local && remote) {
           console.log(`[LANote] [diag] syncConfig ${wireRelPath}: remote-only -> downloading`);
@@ -192,6 +201,7 @@ export class ConfigSyncEngine {
           await ensureParentDirsExist(this.app, vaultRelPath);
           const data = await this.transport.downloadFile(wireRelPath);
           await writeBinaryFile(this.app, vaultRelPath, data, remote.mtime);
+          if (needsSyncBaseline(wireRelPath)) this.baseline.set(wireRelPath, remote.mtime);
           actionsCount++;
         } else if (local && remote) {
           if (getActiveLivePaths().has(wireRelPath)) continue;
@@ -200,6 +210,32 @@ export class ConfigSyncEngine {
           const timeDiff = Math.abs(local.stat.mtime - remote.mtime);
 
           if (timeDiff > 2000) {
+            // needsSyncBaseline(wireRelPath): fast-forward instead of
+            // merging when this device's baseline shows one side is
+            // unchanged since its last confirmed sync. Requires a baseline
+            // already recorded for this exact path; otherwise falls
+            // through to full conflict resolution below.
+            if (needsSyncBaseline(wireRelPath)) {
+              const baselineMtime = this.baseline.get(wireRelPath);
+              if (baselineMtime !== undefined && local.stat.mtime === baselineMtime) {
+                console.log(`[LANote] [diag] syncConfig ${wireRelPath}: local unchanged since last sync -> fast-forward download`);
+                await ensureParentDirsExist(this.app, vaultRelPath);
+                const data = await this.transport.downloadFile(wireRelPath);
+                await writeBinaryFile(this.app, vaultRelPath, data, remote.mtime);
+                this.baseline.set(wireRelPath, remote.mtime);
+                actionsCount++;
+                continue;
+              }
+              if (baselineMtime !== undefined && remote.mtime === baselineMtime) {
+                console.log(`[LANote] [diag] syncConfig ${wireRelPath}: remote unchanged since last sync -> fast-forward upload`);
+                const data = await this.app.vault.adapter.readBinary(local.path);
+                await this.transport.uploadFile(wireRelPath, data, local.stat.mtime);
+                this.baseline.set(wireRelPath, local.stat.mtime);
+                actionsCount++;
+                continue;
+              }
+            }
+
             // Contents or timestamps differ. Let's read both.
             const localData = await this.app.vault.adapter.readBinary(local.path);
             const remoteData = await this.transport.downloadFile(wireRelPath);
@@ -224,6 +260,7 @@ export class ConfigSyncEngine {
                 app: this.app, transport: this.transport, wireRelPath, vaultRelPath,
                 localData, remoteData, localMtime: local.stat.mtime, remoteMtime: remote.mtime,
               });
+              if (needsSyncBaseline(wireRelPath)) this.baseline.set(wireRelPath, Math.max(local.stat.mtime, remote.mtime));
             } else {
               // Conflict: Contents are different and timestamps differ.
               console.log(`[LANote] [diag] syncConfig ${wireRelPath}: conflict (localMtime=${local.stat.mtime}, remoteMtime=${remote.mtime})`);
@@ -239,6 +276,12 @@ export class ConfigSyncEngine {
                     localMtime: local.stat.mtime,
                     remoteMtime: remote.mtime,
                   });
+                  if (needsSyncBaseline(wireRelPath)) {
+                    // Re-stat rather than assume a value: resolveExcalidrawConflict
+                    // computes its own merged mtime internally and doesn't return it.
+                    const postMergeStat = await this.app.vault.adapter.stat(local.path);
+                    if (postMergeStat) this.baseline.set(wireRelPath, postMergeStat.mtime);
+                  }
                   actionsCount++;
                   break;
                 }
@@ -290,6 +333,8 @@ export class ConfigSyncEngine {
           }
         }
       }
+
+      await this.baseline.flush();
 
       if (!silent) new Notice(actionsCount > 0 ? `Sync complete (${actionsCount} updated)` : 'Shared folder in sync.', 2000);
       // Silent (periodic-sync) passes skip the Notice above, so log instead -- but only when something actually changed, since this can run every few seconds.

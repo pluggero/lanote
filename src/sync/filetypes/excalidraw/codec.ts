@@ -25,10 +25,15 @@ export interface ExcalidrawSceneData {
 export interface ExcalidrawFileParts {
   // Everything in the file up to and including the `\`\`\`compressed-json\n`
   // fence-open line: YAML frontmatter, the instructional banner, and the
-  // `## Text Elements` section. Kept as an opaque, verbatim string rather
-  // than parsed -- `## Text Elements` is a plugin-generated plaintext
-  // mirror of bound text, and LANote never needs to read or merge it, only
-  // carry it through untouched from whichever side supplies the shell.
+  // `## Text Elements` section (lines of the form `<text> ^<elementId>`).
+  // Kept as an opaque, verbatim string here -- but the Excalidraw plugin
+  // parses this section on load and overwrites the matching element's
+  // `.text`/`.originalText` with it (confirmed against the plugin's own
+  // main.js), so a merge that only reconciles sceneData.elements and
+  // copies this section verbatim from one side can leave a stale line
+  // here that silently reverts a correctly-merged element's text the next
+  // time any peer opens the file. patchTextElementsMirror in
+  // reconcileElements.ts corrects exactly that.
   shellPrefix: string;
   // The closing `\`\`\`` fence line onward (typically just `\`\`\`\n%%`).
   shellSuffix: string;

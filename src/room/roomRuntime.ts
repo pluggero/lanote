@@ -13,7 +13,7 @@ import { updateStatusBar } from '../collab/statusBar';
 export async function buildRuntimeForRoom(plugin: LANotePlugin, kind: 'hosted' | 'joined', room: HostedRoom | JoinedRoom): Promise<void> {
   const roomKeys = await deriveRoomKeys(room.roomSecret);
   const serverUrl = normalizeServerUrl(plugin.settings.signalingUrl);
-  const configSyncEngine = new ConfigSyncEngine(plugin.app, serverUrl, roomKeys, room.sharedFolder);
+  const configSyncEngine = new ConfigSyncEngine(plugin, serverUrl, roomKeys, room.sharedFolder, room.id);
   plugin.roomRuntimes.set(room.id, { kind, roomKeys, configSyncEngine });
 }
 
