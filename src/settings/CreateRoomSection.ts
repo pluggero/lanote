@@ -1,6 +1,6 @@
 import { Notice, Setting } from 'obsidian';
 import type LANotePlugin from '../main';
-import type { HostedRoom } from '../settingsStore';
+import type { HostedRoom } from '../lib/settingsStore';
 import { syncRoom } from '../room/roomLookup';
 import { renderRoomListItem, type RoomListItemAction, type RoomListItemHandle } from './RoomListItem';
 import { getRoomPeers } from './roomPeers';

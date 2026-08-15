@@ -1,7 +1,7 @@
 import { App, Notice } from 'obsidian';
-import { type RoomKeys, derivePathToken } from '../crypto';
-import { ensureParentDirsExist, writeBinaryFile, deleteLocalFile } from '../vaultFs';
-import { toWireRelPath, toVaultRelPath, shouldIgnore } from '../syncPaths';
+import { type RoomKeys, derivePathToken } from '../lib/crypto';
+import { ensureParentDirsExist, writeBinaryFile, deleteLocalFile } from '../lib/vaultFs';
+import { toWireRelPath, toVaultRelPath, shouldIgnore } from '../lib/syncPaths';
 import { SyncTransport } from './syncTransport';
 import { resolveByLatestMtime } from './mtimeWins';
 import { detectFileType } from './filetypes/detectFileType';

@@ -1,5 +1,5 @@
-import type LANotePlugin from './main';
-import { DEFAULT_SYNC_INTERVAL_SECONDS } from './sync/syncInterval';
+import type LANotePlugin from '../main';
+import { DEFAULT_SYNC_INTERVAL_SECONDS } from '../sync/syncInterval';
 
 // A room this device hosts: its files live locally, and are pushed to the
 // server while `sharingActive`. `id` is a stable local list id, distinct from

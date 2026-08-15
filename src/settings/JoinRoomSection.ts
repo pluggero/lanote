@@ -1,7 +1,7 @@
 import { Setting } from 'obsidian';
-import { isWithinSharedFolder } from '../syncPaths';
+import { isWithinSharedFolder } from '../lib/syncPaths';
 import type LANotePlugin from '../main';
-import type { JoinedRoom } from '../settingsStore';
+import type { JoinedRoom } from '../lib/settingsStore';
 import { syncRoom } from '../room/roomLookup';
 import { renderRoomListItem, type BadgeVariant, type RoomListItemAction, type RoomListItemHandle } from './RoomListItem';
 import { getRoomPeers } from './roomPeers';

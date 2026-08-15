@@ -1,7 +1,7 @@
 import { Plugin, TFile, WorkspaceLeaf, MarkdownView, debounce } from 'obsidian';
 import { LANoteSettingTab } from './settings/SettingsTab';
-import { type LANoteSettings, type HostedRoom, type JoinedRoom, loadSettings, saveSettings } from './settingsStore';
-import type { ConnectionStatus, RoomRuntime, SyncSession } from './types';
+import { type LANoteSettings, type HostedRoom, type JoinedRoom, loadSettings, saveSettings } from './lib/settingsStore';
+import type { ConnectionStatus, RoomRuntime, SyncSession } from './lib/types';
 import { findHostedOrJoinedRoomForPath, getBackgroundSyncDebouncer, activeWireRelPathsForRoom, syncRoom } from './room/roomLookup';
 import { teardownSyncSession } from './room/sessionTeardown';
 import { reinitializeAllRooms } from './room/roomRuntime';
@@ -15,7 +15,7 @@ import { updateStatusBar } from './collab/statusBar';
 import { toggleSimulator } from './collab/simulator';
 import { cleanupAndMergeConflicts } from './sync/conflictMerge';
 import { clampSyncIntervalSeconds } from './sync/syncInterval';
-import { consumeSyncDrivenDeletion } from './vaultFs';
+import { consumeSyncDrivenDeletion } from './lib/vaultFs';
 
 export default class LANotePlugin extends Plugin {
   settings!: LANoteSettings;

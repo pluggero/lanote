@@ -1,6 +1,6 @@
 import { Awareness } from 'y-protocols/awareness';
 import { WebsocketProvider } from 'y-websocket';
-import type { SyncSession } from '../types';
+import type { SyncSession } from '../lib/types';
 import type LANotePlugin from '../main';
 
 /**

@@ -1,7 +1,7 @@
 import { debounce } from 'obsidian';
 import type LANotePlugin from '../main';
-import type { HostedRoom, JoinedRoom } from '../settingsStore';
-import { isWithinSharedFolder, toWireRelPath } from '../syncPaths';
+import type { HostedRoom, JoinedRoom } from '../lib/settingsStore';
+import { isWithinSharedFolder, toWireRelPath } from '../lib/syncPaths';
 
 export function findRoomById(plugin: LANotePlugin, id: string): { room: HostedRoom | JoinedRoom; kind: 'hosted' | 'joined' } | null {
   const hosted = plugin.settings.hostedRooms.find(r => r.id === id);

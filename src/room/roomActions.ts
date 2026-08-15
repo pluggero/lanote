@@ -1,9 +1,9 @@
 import { Notice } from 'obsidian';
-import type { HostedRoom, JoinedRoom } from '../settingsStore';
-import { saveSettings } from '../settingsStore';
-import { generateRoomSecret } from '../crypto';
-import { ensureFolderExists } from '../vaultFs';
-import { isWithinSharedFolder } from '../syncPaths';
+import type { HostedRoom, JoinedRoom } from '../lib/settingsStore';
+import { saveSettings } from '../lib/settingsStore';
+import { generateRoomSecret } from '../lib/crypto';
+import { ensureFolderExists } from '../lib/vaultFs';
+import { isWithinSharedFolder } from '../lib/syncPaths';
 import type LANotePlugin from '../main';
 import { findRoomById, assertNoFolderCollision, syncRoom } from './roomLookup';
 import { buildRuntimeForRoom, teardownRuntimeForRoom } from './roomRuntime';

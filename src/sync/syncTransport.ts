@@ -1,7 +1,7 @@
 import { Notice, requestUrl } from 'obsidian';
-import { type RoomKeys, encryptBytes, decryptBytes, encryptFileName, decryptFileName, derivePathToken, makeAAD, base64UrlEncode } from '../crypto';
-import { normalizeServerUrl } from '../serverUrl';
-import type { FileManifest } from '../syncPaths';
+import { type RoomKeys, encryptBytes, decryptBytes, encryptFileName, decryptFileName, derivePathToken, makeAAD, base64UrlEncode } from '../lib/crypto';
+import { normalizeServerUrl } from '../lib/serverUrl';
+import type { FileManifest } from '../lib/syncPaths';
 
 const ENC_NAME_HEADER = 'X-LANote-Enc-Name';
 

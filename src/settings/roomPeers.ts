@@ -1,6 +1,6 @@
-import { isWithinSharedFolder } from '../syncPaths';
+import { isWithinSharedFolder } from '../lib/syncPaths';
 import type LANotePlugin from '../main';
-import type { HostedRoom, JoinedRoom } from '../settingsStore';
+import type { HostedRoom, JoinedRoom } from '../lib/settingsStore';
 
 export interface RoomPeer {
   name: string;

@@ -2,7 +2,7 @@ import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
 import { WebsocketProvider } from 'y-websocket';
 import { type RoomKeys } from './crypto';
-import type { ConfigSyncEngine } from './sync/configSync';
+import type { ConfigSyncEngine } from '../sync/configSync';
 
 export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
 

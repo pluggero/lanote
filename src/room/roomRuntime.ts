@@ -1,8 +1,8 @@
-import type { HostedRoom, JoinedRoom } from '../settingsStore';
-import { saveSettings } from '../settingsStore';
-import { deriveRoomKeys } from '../crypto';
-import { normalizeServerUrl } from '../serverUrl';
-import { isWithinSharedFolder } from '../syncPaths';
+import type { HostedRoom, JoinedRoom } from '../lib/settingsStore';
+import { saveSettings } from '../lib/settingsStore';
+import { deriveRoomKeys } from '../lib/crypto';
+import { normalizeServerUrl } from '../lib/serverUrl';
+import { isWithinSharedFolder } from '../lib/syncPaths';
 import { ConfigSyncEngine } from '../sync/configSync';
 import type LANotePlugin from '../main';
 import { findRoomById } from './roomLookup';
