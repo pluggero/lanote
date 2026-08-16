@@ -1,4 +1,5 @@
 import { App } from 'obsidian';
+import { shouldIgnore } from './syncPaths';
 
 async function mkdirIfMissing(app: App, dir: string, swallowErrors: boolean): Promise<void> {
   if (await app.vault.adapter.exists(dir)) return;
@@ -22,6 +23,27 @@ export async function ensureFolderExists(app: App, folderPath: string): Promise<
     cur = cur ? `${cur}/${part}` : part;
     await mkdirIfMissing(app, cur, false);
   }
+}
+
+/** Depth-first, non-ignored file paths under a vault folder. */
+export async function* listFilesRecursive(app: App, dir: string): AsyncGenerator<string> {
+  if (shouldIgnore(dir)) return;
+  const list = await app.vault.adapter.list(dir);
+  for (const file of list.files) {
+    if (!shouldIgnore(file)) yield file;
+  }
+  for (const folder of list.folders) {
+    yield* listFilesRecursive(app, folder);
+  }
+}
+
+/** True if a vault folder contains no non-ignored files. */
+export async function isFolderEmpty(app: App, folderPath: string): Promise<boolean> {
+  const dir = folderPath.replace(/\/+$/, '');
+  for await (const _file of listFilesRecursive(app, dir)) {
+    return false;
+  }
+  return true;
 }
 
 /**
