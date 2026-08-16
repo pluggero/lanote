@@ -8,7 +8,7 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("lanote")
 
-PORT = int(os.environ.get("PORT", 4444))
+PORT = int(os.environ.get("PORT", 4245))
 DB_DIR = Path(os.environ.get("DB_DIR", Path(__file__).parent.parent / "data")).resolve()
 ROOMS_DIR = DB_DIR / "rooms"
 ROOMS_DIR.mkdir(parents=True, exist_ok=True)

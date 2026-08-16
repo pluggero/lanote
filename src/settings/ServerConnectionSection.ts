@@ -6,7 +6,7 @@ export function renderServerConnectionSection(containerEl: HTMLElement, plugin: 
   containerEl.createEl('h3', { cls: 'lanote-section-header', text: 'Server Connection' });
 
   const serverHint = containerEl.createDiv({ cls: 'lanote-banner' });
-  serverHint.createEl('strong', { text: 'The server is started separately, via Docker.' });
+  serverHint.createEl('strong', { text: 'The relay server is started separately, via Docker.' });
   serverHint.createEl('br');
   serverHint.appendText('Run ');
   serverHint.createEl('code', { text: 'docker compose up -d' });
@@ -15,7 +15,7 @@ export function renderServerConnectionSection(containerEl: HTMLElement, plugin: 
   serverHint.appendText(' or ');
   serverHint.createEl('code', { text: 'ipconfig' });
   serverHint.appendText('), e.g. ');
-  serverHint.createEl('code', { text: 'ws://192.168.1.12:4444' });
+  serverHint.createEl('code', { text: 'ws://192.168.1.12:4245' });
   serverHint.appendText('.');
 
   // Debounced rather than reinitializing every room on each keystroke --
@@ -25,9 +25,9 @@ export function renderServerConnectionSection(containerEl: HTMLElement, plugin: 
 
   new Setting(containerEl)
     .setName('Server Connection URL')
-    .setDesc('The relay server all your devices connect to (see the hint above for how to start it). Default: ws://localhost:4444, if the server is running on this same machine. The server never sees plaintext, so this connection does not need to be encrypted itself.')
+    .setDesc('The relay server all your devices connect to (see the hint above for how to start it). Default: ws://localhost:4245, if the relay server is running on this same machine. It never sees plaintext, so this connection does not need to be encrypted itself.')
     .addText(text => text
-      .setPlaceholder('ws://localhost:4444')
+      .setPlaceholder('ws://localhost:4245')
       .setValue(plugin.settings.signalingUrl)
       .onChange(async (val) => {
         plugin.settings.signalingUrl = val;

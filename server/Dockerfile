@@ -17,15 +17,15 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
     && mkdir -p /app/data \
     && chown -R lanote:lanote /app
 
-EXPOSE 4444
-ENV PORT=4444 \
+EXPOSE 4245
+ENV PORT=4245 \
     DB_DIR=/app/data
 
 VOLUME ["/app/data"]
 
 # No curl in the slim image -- Python's own urllib avoids installing one.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:4444/', timeout=2)" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:4245/', timeout=2)" || exit 1
 
 # Container starts as root: the entrypoint fixes DB_DIR ownership (needed
 # for bind mounts, see docker-entrypoint.sh) then drops to the unprivileged
