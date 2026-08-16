@@ -1,6 +1,6 @@
 export function normalizeServerUrl(url: string): string {
   let cleaned = (url || '').trim();
-  if (!cleaned) return 'ws://localhost:4444';
+  if (!cleaned) return 'ws://localhost:4245';
 
   // 1. If it has no protocol, prepend 'ws://'
   if (!/^https?:\/\//i.test(cleaned) && !/^wss?:\/\//i.test(cleaned)) {
