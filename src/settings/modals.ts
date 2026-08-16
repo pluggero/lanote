@@ -1,5 +1,6 @@
 import { App, Modal, Notice, Setting, TextComponent, TFolder, FuzzySuggestModal } from 'obsidian';
 import type LANotePlugin from '../main';
+import { isFolderEmpty } from '../lib/vaultFs';
 
 // ─────────────────────────────────────────────────────────────────
 // FOLDER PICKER
@@ -156,6 +157,22 @@ export class JoinRoomModal extends Modal {
       return;
     }
 
+    const exists = await this.app.vault.adapter.exists(this.destFolder);
+    if (exists && !(await isFolderEmpty(this.app, this.destFolder))) {
+      new ConfirmModal(this.app, {
+        title: 'Destination folder is not empty',
+        body: `"${this.destFolder}" already contains files. Joining will merge its existing contents into the room and share them with everyone else in it. This can't be undone from here!! Leaving the room afterward will not un-share what was already synced.`,
+        confirmText: 'Join anyway',
+        warning: true,
+        onConfirm: () => this.performJoin(),
+      }).open();
+      return;
+    }
+
+    await this.performJoin();
+  }
+
+  private async performJoin(): Promise<void> {
     let room;
     try {
       room = await this.plugin.joinRoom(this.roomCode, this.destFolder);

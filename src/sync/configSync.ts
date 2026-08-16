@@ -1,7 +1,7 @@
 import { App, Notice } from 'obsidian';
 import type LANotePlugin from '../main';
 import { type RoomKeys, derivePathToken } from '../lib/crypto';
-import { ensureParentDirsExist, writeBinaryFile, deleteLocalFile } from '../lib/vaultFs';
+import { ensureParentDirsExist, writeBinaryFile, deleteLocalFile, listFilesRecursive } from '../lib/vaultFs';
 import { toWireRelPath, toVaultRelPath, shouldIgnore } from '../lib/syncPaths';
 import { SyncTransport } from './syncTransport';
 import { resolveByLatestMtime } from './mtimeWins';
@@ -126,21 +126,10 @@ export class ConfigSyncEngine {
       const localFiles: { path: string, stat: any }[] = [];
 
       const scanRoot = this.sharedFolder.replace(/\/+$/, '');
-      const scanDir = async (dir: string) => {
-        if (shouldIgnore(dir)) return;
-
-        const list = await this.app.vault.adapter.list(dir);
-        for (const file of list.files) {
-          if (shouldIgnore(file)) continue;
-          const stat = await this.app.vault.adapter.stat(file);
-          if (stat) localFiles.push({ path: file, stat });
-        }
-        for (const folder of list.folders) {
-          await scanDir(folder);
-        }
-      };
-
-      await scanDir(scanRoot);
+      for await (const file of listFilesRecursive(this.app, scanRoot)) {
+        const stat = await this.app.vault.adapter.stat(file);
+        if (stat) localFiles.push({ path: file, stat });
+      }
 
       // Map local files by wire-relative path (relative to the shared folder) for unified syncing
       const localMap = new Map<string, { path: string, stat: any }>();
