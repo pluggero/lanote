@@ -44,7 +44,7 @@ export interface LANoteSettings {
 }
 
 export const DEFAULT_SETTINGS: LANoteSettings = {
-  nickname: 'Me',
+  nickname: 'Anonymous',
   cursorColor: '#6366f1',
   signalingUrl: 'ws://localhost:4245',
   syncIntervalSeconds: DEFAULT_SYNC_INTERVAL_SECONDS,
