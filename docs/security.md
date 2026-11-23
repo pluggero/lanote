@@ -6,11 +6,22 @@ Every device derives the same set of keys from the room code you type in (PBKDF2
 
 - An **AES-GCM key** that encrypts file contents, file names, and live-editing state.
 - An **HMAC key** that turns each file's path into an opaque, one-way token. The relay server stores and looks files up by this token, never by the real path.
-- A **bearer token** and **room ID**, derived the same way, which *are* sent to the relay server. They're what it uses to authorize requests and address the room, and they reveal nothing about the room code or the encryption key they came from.
+- A **bearer token** and **room ID**, derived the same way, which _are_ sent to the relay server. They're what it uses to authorize requests and address the room, and they reveal nothing about the room code or the encryption key they came from.
 
 The relay server only ever sees ciphertext, file sizes/timestamps, opaque path tokens, and that bearer token/room ID. It never sees your room code, your encryption key, a real file path, or any plaintext.
 
-**Authentication** is trust-on-first-use: the first bearer token presented for a room ID becomes that room's credential, and every later request must present the same one. There's no separate login step or password; knowing the room code *is* the credential.
+**Authentication** is trust-on-first-use: the first bearer token presented for a room ID becomes that room's credential, and every later request must present the same one. There's no separate login step or password; knowing the room code _is_ the credential.
+
+## Threat model
+
+Anyone with the room code can read and write every file in the shared folder. A malicious peer can:
+
+- **Change or delete files.** Keep backups.
+- **Run code** through plugins that execute vault content (Templater, DataviewJS, CustomJS, Shell commands). Keep their script folders outside the shared folder and prevent inline scripts from running.
+- **Drop harmful files** (scripts, executables, macros). Don't open files you don't trust.
+- **Fill your disk** (up to 200 MB per file).
+
+Peers can't write outside the shared folder: unsafe file names are skipped. The relay server can't read or forge files, but can drop them or serve old versions.
 
 ## Known limitations
 

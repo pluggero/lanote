@@ -21,6 +21,12 @@ export function toWireRelPath(sharedFolder: string, vaultRelPath: string): strin
   return normalized.startsWith(prefix) ? normalized.slice(prefix.length) : normalized;
 }
 
+/** True if a peer-supplied wire path stays inside the shared folder: relative, no traversal, no drive or stream syntax. */
+export function isSafeWireRelPath(wireRelPath: string): boolean {
+  if (!wireRelPath || /[\u0000-\u001f\\:]/.test(wireRelPath) || wireRelPath.startsWith('/')) return false;
+  return wireRelPath.split('/').every(segment => segment !== '' && segment !== '.' && segment !== '..');
+}
+
 /** Inverse of toWireRelPath. */
 export function toVaultRelPath(sharedFolder: string, wireRelPath: string): string {
   if (!sharedFolder) return wireRelPath;

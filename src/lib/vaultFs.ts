@@ -74,7 +74,6 @@ export async function writeBinaryFile(app: App, relPath: string, data: ArrayBuff
   await app.vault.adapter.writeBinary(relPath, data, mtime !== undefined ? { mtime } : undefined);
 }
 
-/** Rewrites a file with its own content but a fresh mtime -- a plain rename doesn't update mtime on its own. */
 /** Rewrites the file with a fresh mtime; returns its bytes and that mtime. */
 export async function touchFileMtime(app: App, relPath: string): Promise<{ data: ArrayBuffer; mtime: number }> {
   const data = await app.vault.adapter.readBinary(relPath);
