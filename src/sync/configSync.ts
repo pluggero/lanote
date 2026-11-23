@@ -14,6 +14,13 @@ import { CanvasIdBaselineStore, recordKnownIdsFromBytes } from './filetypes/canv
 import { needsSyncBaseline } from './filetypes/syncBaseline';
 import { SyncBaselineStore } from './syncBaseline';
 import { flushStores } from './perRoomSettingsStore';
+import { isMassDeletion, splitMoves, type SurvivingFile } from './massDeletionGuard';
+
+/** A local file about to be deleted because a peer's tombstone says so. */
+export interface PendingDeletion {
+  wireRelPath: string;
+  vaultRelPath: string;
+}
 
 export class ConfigSyncEngine {
   // Instance-level (not static): with multi-room support, each room gets its
@@ -89,6 +96,28 @@ export class ConfigSyncEngine {
     return this.transport.getRemoteTombstones();
   }
 
+  /** Applies deletions withheld by the mass-deletion guard. Live status is re-read per file, not snapshotted. */
+  public async applyDeletions(
+    pending: PendingDeletion[],
+    getActiveLivePaths: () => Set<string>,
+    onActiveFileDeletedRemotely: (vaultRelPath: string) => void
+  ): Promise<number> {
+    for (const { wireRelPath, vaultRelPath } of pending) {
+      if (getActiveLivePaths().has(wireRelPath)) onActiveFileDeletedRemotely(vaultRelPath);
+      await deleteLocalFile(this.app, vaultRelPath);
+    }
+    return pending.length;
+  }
+
+  /** Re-uploads local copies; the upload clears the server tombstone. */
+  public async restoreDeletedFiles(pending: PendingDeletion[]): Promise<void> {
+    for (const { wireRelPath, vaultRelPath } of pending) {
+      if (!(await this.app.vault.adapter.exists(vaultRelPath))) continue;
+      const data = await this.app.vault.adapter.readBinary(vaultRelPath);
+      await this.transport.uploadFile(wireRelPath, data, Date.now());
+    }
+  }
+
   /**
    * Performs an incremental, database-free shared-folder configuration and file sync.
    * Compares the local file system manifest with the server manifest, pushing and pulling
@@ -105,11 +134,16 @@ export class ConfigSyncEngine {
    * touches the file-body manifest, so that upload is the only way a newly created open
    * file ever becomes visible to peers.
    * @param onActiveFileDeletedRemotely Called on a stale-deletion path that's still open locally, before it's deleted.
+   * @param getPendingExclusions Paths to skip entirely this pass (queued deletes, open mass-deletion prompts).
+   * @param onMassDeletionDetected Fired instead of deleting when stale-tombstoned paths look like an accidental
+   * mass deletion. Not awaited: isSyncing guards this whole method, so blocking here would stall the room.
    */
   public async syncConfig(
     silent: boolean,
     getActiveLivePaths: () => Set<string>,
-    onActiveFileDeletedRemotely: (vaultRelPath: string) => void
+    onActiveFileDeletedRemotely: (vaultRelPath: string) => void,
+    getPendingExclusions: () => Set<string>,
+    onMassDeletionDetected: (pending: PendingDeletion[], totalBefore: number) => void
   ) {
     if (this.isSyncing) {
       if (!silent) new Notice('Sync already in progress...');
@@ -144,8 +178,13 @@ export class ConfigSyncEngine {
       ]);
 
       let actionsCount = 0;
+      const pendingExclusions = getPendingExclusions();
+      const pendingDeletions: PendingDeletion[] = [];
+      const downloaded: SurvivingFile[] = [];
 
       for (const wireRelPath of allPaths) {
+        if (pendingExclusions.has(wireRelPath)) continue;
+
         const local = localMap.get(wireRelPath);
         const remote = remoteManifest[wireRelPath];
         const vaultRelPath = toVaultRelPath(this.sharedFolder, wireRelPath);
@@ -160,11 +199,8 @@ export class ConfigSyncEngine {
           const isStaleDeletion = deletedAt !== undefined && local.stat.mtime <= deletedAt + 2000;
 
           if (isStaleDeletion) {
-            const isActive = getActiveLivePaths().has(wireRelPath);
-            console.log(`[LANote] [diag] syncConfig ${wireRelPath}: stale deletion (deletedAt=${deletedAt}, localMtime=${local.stat.mtime}, active=${isActive}) -> deleting local copy`);
-            if (isActive) onActiveFileDeletedRemotely(vaultRelPath);
-            await deleteLocalFile(this.app, vaultRelPath);
-            actionsCount++;
+            console.log(`[LANote] [diag] syncConfig ${wireRelPath}: stale deletion (deletedAt=${deletedAt}, localMtime=${local.stat.mtime}) -> queued for deletion`);
+            pendingDeletions.push({ wireRelPath, vaultRelPath });
             continue;
           }
 
@@ -183,6 +219,7 @@ export class ConfigSyncEngine {
           await ensureParentDirsExist(this.app, vaultRelPath);
           const data = await this.transport.downloadFile(wireRelPath);
           await writeBinaryFile(this.app, vaultRelPath, data, remote.mtime);
+          downloaded.push({ path: vaultRelPath, size: data.byteLength });
           if (needsSyncBaseline(wireRelPath)) this.baseline.set(wireRelPath, remote.mtime);
           if (detectFileType(wireRelPath) === 'canvas') recordKnownIdsFromBytes(this.canvasIds, wireRelPath, data);
           actionsCount++;
@@ -336,6 +373,23 @@ export class ConfigSyncEngine {
               }
             }
           }
+        }
+      }
+
+      if (pendingDeletions.length > 0) {
+        const deleting = new Set(pendingDeletions.map(d => d.vaultRelPath));
+        const survivors: SurvivingFile[] = [
+          ...localFiles.filter(f => !deleting.has(f.path)).map(f => ({ path: f.path, size: f.stat.size })),
+          ...downloaded,
+        ];
+        // Moves lose no content, so only real losses count towards the guard.
+        const { moved, lost } = await splitMoves(this.app, pendingDeletions, survivors);
+        actionsCount += await this.applyDeletions(moved, getActiveLivePaths, onActiveFileDeletedRemotely);
+        if (isMassDeletion(lost.length, localFiles.length)) {
+          console.log(`[LANote] [diag] syncConfig: withholding ${lost.length}/${localFiles.length} deletion(s) for ${this.sharedFolder}, looks like a mass deletion`);
+          onMassDeletionDetected(lost, localFiles.length);
+        } else {
+          actionsCount += await this.applyDeletions(lost, getActiveLivePaths, onActiveFileDeletedRemotely);
         }
       }
 

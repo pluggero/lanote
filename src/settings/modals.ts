@@ -215,12 +215,20 @@ export class JoinRoomModal extends Modal {
 export interface ConfirmModalOptions {
   title: string;
   body: string;
+  items?: string[];
   confirmText: string;
+  cancelText?: string;
   warning?: boolean;
   onConfirm: () => void | Promise<void>;
+  /** Also invoked on dismiss without a button click (Escape, outside click), so callers can't be silently skipped. */
+  onCancel?: () => void | Promise<void>;
 }
 
+const MAX_LISTED_ITEMS = 20;
+
 export class ConfirmModal extends Modal {
+  private decided = false;
+
   constructor(app: App, private opts: ConfirmModalOptions) {
     super(app);
   }
@@ -229,22 +237,39 @@ export class ConfirmModal extends Modal {
     const { contentEl } = this;
     contentEl.createEl('h2', { text: this.opts.title });
     contentEl.createEl('p', { text: this.opts.body, cls: 'lanote-modal-desc' });
+    if (this.opts.items?.length) this.renderItems(this.opts.items);
 
     new Setting(contentEl)
       .addButton(btn => btn
-        .setButtonText('Cancel')
-        .onClick(() => this.close()))
+        .setButtonText(this.opts.cancelText ?? 'Cancel')
+        .onClick(async () => {
+          this.decided = true;
+          this.close();
+          await this.opts.onCancel?.();
+        }))
       .addButton(btn => {
         btn.setButtonText(this.opts.confirmText);
         if (this.opts.warning) btn.setWarning(); else btn.setCta();
         btn.onClick(async () => {
+          this.decided = true;
           this.close();
           await this.opts.onConfirm();
         });
       });
   }
 
+  private renderItems(items: string[]): void {
+    const list = this.contentEl.createEl('ul', { cls: 'lanote-modal-list' });
+    for (const item of items.slice(0, MAX_LISTED_ITEMS)) list.createEl('li', { text: item });
+    const rest = items.length - MAX_LISTED_ITEMS;
+    if (rest > 0) list.createEl('li', { text: `…and ${rest} more`, cls: 'lanote-modal-list-more' });
+  }
+
   onClose(): void {
     this.contentEl.empty();
+    if (!this.decided) {
+      this.decided = true;
+      void this.opts.onCancel?.();
+    }
   }
 }

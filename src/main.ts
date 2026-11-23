@@ -1,8 +1,8 @@
-import { Plugin, TFile, WorkspaceLeaf, MarkdownView, debounce } from 'obsidian';
+import { Plugin, TFile, WorkspaceLeaf, MarkdownView, debounce, type Debouncer } from 'obsidian';
 import { LANoteSettingTab } from './settings/SettingsTab';
 import { type LANoteSettings, type HostedRoom, type JoinedRoom, loadSettings, saveSettings } from './lib/settingsStore';
 import type { ConnectionStatus, RoomRuntime, SyncSession } from './lib/types';
-import { findHostedOrJoinedRoomForPath, getBackgroundSyncDebouncer, activeWireRelPathsForRoom, syncRoom } from './room/roomLookup';
+import { findHostedOrJoinedRoomForPath, getBackgroundSyncDebouncer, getMassDeletionFlusher, disposeMassDeletionQueue, activeWireRelPathsForRoom, syncRoom } from './room/roomLookup';
 import { teardownSyncSession } from './room/sessionTeardown';
 import { reinitializeAllRooms } from './room/roomRuntime';
 import {
@@ -38,6 +38,8 @@ export default class LANotePlugin extends Plugin {
   // One debounced background-sync trigger per room, so one room's background
   // sync doesn't force a rescan of every other room's folder.
   public backgroundSyncDebouncers: Map<string, () => void> = new Map();
+  // One debounced flush of queued local deletes per room (see getMassDeletionFlusher).
+  public massDeletionFlushers: Map<string, Debouncer<[], void>> = new Map();
   // Raw id of the current periodic-sync setInterval, so restartPeriodicSyncInterval() can clear and replace it when the user changes syncIntervalSeconds.
   // Typed as DOM's `number` (not @types/node's Timeout) because registerInterval() requires it -- only window.setInterval/window.clearInterval return that.
   private periodicSyncIntervalId: number | null = null;
@@ -134,10 +136,7 @@ export default class LANotePlugin extends Plugin {
         if (consumeSyncDrivenDeletion(file.path)) return;
         abandonActiveSync(this, file.path);
         const match = findHostedOrJoinedRoomForPath(this, file.path);
-        if (match) {
-          this.roomRuntimes.get(match.room.id)?.configSyncEngine.deleteRemoteFile(file.path);
-          getBackgroundSyncDebouncer(this, match.room.id)();
-        }
+        if (match) getMassDeletionFlusher(this, match.room.id)(file.path);
       }
     }));
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
@@ -161,6 +160,11 @@ export default class LANotePlugin extends Plugin {
     }
     for (const timeout of this.retryTimeouts.values()) clearTimeout(timeout);
     this.retryTimeouts.clear();
+
+    // Best-effort (onunload can't await): pushes queued small batches; a batch awaiting a prompt is left alone.
+    for (const roomId of [...this.massDeletionFlushers.keys()]) {
+      void disposeMassDeletionQueue(this, roomId);
+    }
 
     // Obsidian's onunload() is synchronous (can't be awaited), so this is
     // best-effort: it'll complete for a normal plugin disable/reload, but a
