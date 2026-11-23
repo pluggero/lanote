@@ -1,7 +1,7 @@
 import { Notice, requestUrl } from 'obsidian';
 import { type RoomKeys, encryptBytes, decryptBytes, encryptFileName, decryptFileName, derivePathToken, makeAAD, base64UrlEncode } from '../lib/crypto';
 import { normalizeServerUrl } from '../lib/serverUrl';
-import type { FileManifest } from '../lib/syncPaths';
+import { type FileManifest, isSafeWireRelPath } from '../lib/syncPaths';
 
 const ENC_NAME_HEADER = 'X-LANote-Enc-Name';
 
@@ -38,7 +38,7 @@ export class SyncTransport {
     return derivePathToken(this.roomKeys.pathKey, wireRelPath);
   }
 
-  /** Fetches the manifest and decrypts each entry's name back to a wire-relative path, keyed the same way the pre-encryption manifest was. Entries with a missing or undecryptable name are skipped and surfaced via Notice, since a failed decrypt can mean tampering, not just corruption. */
+  /** Fetches the manifest and decrypts each entry's name back to a wire-relative path, keyed the same way the pre-encryption manifest was. Entries with a missing, undecryptable or unsafe name are skipped and surfaced via Notice, since that can mean tampering. */
   async getRemoteManifest(): Promise<FileManifest> {
     const url = this.getApiUrl('/manifest');
     const res = await requestUrl({ url, method: 'GET', headers: this.authHeaders() });
@@ -52,10 +52,13 @@ export class SyncTransport {
       }
       try {
         const wireRelPath = await decryptFileName(this.roomKeys.encKey, this.roomKeys.roomId, token, entry.encName);
+        // A peer with the room key can encrypt any name: confine it to the shared folder and to its own token.
+        if (!isSafeWireRelPath(wireRelPath)) throw new Error(`unsafe path ${JSON.stringify(wireRelPath)}`);
+        if ((await this.pathToken(wireRelPath)) !== token) throw new Error('name does not match its path token');
         manifest[wireRelPath] = { size: entry.size, mtime: entry.mtime };
       } catch (e) {
-        console.error(`[LANote] Failed to decrypt name for manifest entry ${token}:`, e);
-        new Notice(`LANote: a file's name could not be decrypted and was skipped (possible tampering or a stale room key).`, 8000);
+        console.error(`[LANote] Rejected name for manifest entry ${token}:`, e);
+        new Notice(`LANote: a file was skipped because its name was unreadable or unsafe (possible tampering or a stale room key).`, 8000);
       }
     }
     return manifest;
