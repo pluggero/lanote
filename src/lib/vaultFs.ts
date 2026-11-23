@@ -1,5 +1,5 @@
 import { App } from 'obsidian';
-import { shouldIgnore } from './syncPaths';
+import { isWithinSharedFolder, shouldIgnore } from './syncPaths';
 
 async function mkdirIfMissing(app: App, dir: string, swallowErrors: boolean): Promise<void> {
   if (await app.vault.adapter.exists(dir)) return;
@@ -37,6 +37,11 @@ export async function* listFilesRecursive(app: App, dir: string): AsyncGenerator
   }
 }
 
+/** Number of non-ignored files in a vault folder, from the vault index (synchronous). */
+export function countFiles(app: App, folderPath: string): number {
+  return app.vault.getFiles().filter(f => isWithinSharedFolder(folderPath, f.path) && !shouldIgnore(f.path)).length;
+}
+
 /** True if a vault folder contains no non-ignored files. */
 export async function isFolderEmpty(app: App, folderPath: string): Promise<boolean> {
   const dir = folderPath.replace(/\/+$/, '');
@@ -70,9 +75,12 @@ export async function writeBinaryFile(app: App, relPath: string, data: ArrayBuff
 }
 
 /** Rewrites a file with its own content but a fresh mtime -- a plain rename doesn't update mtime on its own. */
-export async function touchFileMtime(app: App, relPath: string): Promise<void> {
+/** Rewrites the file with a fresh mtime; returns its bytes and that mtime. */
+export async function touchFileMtime(app: App, relPath: string): Promise<{ data: ArrayBuffer; mtime: number }> {
   const data = await app.vault.adapter.readBinary(relPath);
-  await app.vault.adapter.writeBinary(relPath, data, { mtime: Date.now() });
+  const mtime = Date.now();
+  await app.vault.adapter.writeBinary(relPath, data, { mtime });
+  return { data, mtime };
 }
 
 const syncDrivenDeletions = new Set<string>();

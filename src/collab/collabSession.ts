@@ -351,6 +351,22 @@ export function getDiskSyncDebouncer(plugin: LANotePlugin, path: string): (file:
   return fn;
 }
 
+type RoomMatch = ReturnType<typeof findHostedOrJoinedRoomForPath>;
+
+/** Uploads the new path before tombstoning the old one, so peers never see the file missing (a move, not a deletion). */
+async function propagateRename(plugin: LANotePlugin, file: TFile, oldPath: string, matchNew: RoomMatch, matchOld: RoomMatch): Promise<void> {
+  try {
+    if (!matchNew) return;
+    // Fresh mtime: a reused, still-tombstoned path would otherwise look like a stale leftover.
+    const { data, mtime } = await touchFileMtime(plugin.app, file.path);
+    await plugin.roomRuntimes.get(matchNew.room.id)?.configSyncEngine
+      .uploadFile(toWireRelPath(matchNew.room.sharedFolder, file.path), data, mtime);
+  } finally {
+    // Even if the upload failed: background sync retries it, the old path must not come back.
+    if (matchOld) await plugin.roomRuntimes.get(matchOld.room.id)?.configSyncEngine.deleteRemoteFile(oldPath);
+  }
+}
+
 /**
  * A live session's relay room token is derived from the file's path, and
  * Obsidian mutates the TFile's .path in place on rename without firing
@@ -365,14 +381,9 @@ export function handleFileRename(plugin: LANotePlugin, file: TAbstractFile, oldP
   const matchOld = findHostedOrJoinedRoomForPath(plugin, oldPath);
   if (matchOld && matchOld.room.id !== matchNew?.room.id) getBackgroundSyncDebouncer(plugin, matchOld.room.id)();
 
-  // Tombstone the old wire path so the next background sync doesn't resurrect it.
-  if (matchOld && file instanceof TFile) {
-    plugin.roomRuntimes.get(matchOld.room.id)?.configSyncEngine.deleteRemoteFile(oldPath);
-  }
-
-  // A plain rename doesn't update mtime -- if the new name reuses an old, still-tombstoned path, syncConfig()'s staleness check would otherwise misjudge this fresh rename as a leftover of that old deletion.
-  if (matchNew && file instanceof TFile) {
-    touchFileMtime(plugin.app, file.path).catch(e => console.warn(`[LANote] Failed to refresh mtime for ${file.path}:`, e));
+  if (file instanceof TFile) {
+    void propagateRename(plugin, file, oldPath, matchNew, matchOld)
+      .catch(e => console.warn(`[LANote] Failed to propagate rename of ${oldPath}:`, e));
   }
 
   const staleSync = plugin.activeSyncs.get(oldPath);

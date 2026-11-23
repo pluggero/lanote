@@ -5,7 +5,7 @@ import { normalizeServerUrl } from '../lib/serverUrl';
 import { isWithinSharedFolder } from '../lib/syncPaths';
 import { ConfigSyncEngine } from '../sync/configSync';
 import type LANotePlugin from '../main';
-import { findRoomById } from './roomLookup';
+import { findRoomById, disposeMassDeletionQueue } from './roomLookup';
 import { teardownSyncSession } from './sessionTeardown';
 import { reconnectAll } from '../collab/collabSession';
 import { teardownCanvasCardSessionsForRoom } from '../collab/canvasCardSession';
@@ -29,6 +29,8 @@ export async function teardownRuntimeForRoom(plugin: LANotePlugin, localRoomId: 
     }
     await teardownCanvasCardSessionsForRoom(plugin, match.room.sharedFolder);
   }
+  // Before the runtime goes: queued deletes still need its engine.
+  await disposeMassDeletionQueue(plugin, localRoomId);
   plugin.roomRuntimes.delete(localRoomId);
   plugin.backgroundSyncDebouncers.delete(localRoomId);
 }
