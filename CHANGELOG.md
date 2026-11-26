@@ -2,6 +2,14 @@
 
 ## 1.0.0 (2026-11-26)
 
+<!-- Release notes generated using configuration in .github/release.yml at 1.0.0 -->
+
+
+
+**Full Changelog**: https://github.com/pluggero/lanote/compare/1.0.0...1.0.0
+
+## 1.0.0 (2026-11-26)
+
 <!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## What's Changed
