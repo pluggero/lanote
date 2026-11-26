@@ -1,0 +1,25 @@
+name: lanote
+
+# Local build and run. Also a hardening reference for production deployments.
+services:
+  lanote-server:
+    build:
+      context: .
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      # Entrypoint: chown DB_DIR, then drop to the 'lanote' user.
+      - CHOWN
+      - SETUID
+      - SETGID
+    ports:
+      # Localhost only. Use "4245:4245" (or an interface IP) to expose on the LAN.
+      - "127.0.0.1:4245:4245"
+    volumes:
+      - ./server/data:/app/data
+    restart: unless-stopped

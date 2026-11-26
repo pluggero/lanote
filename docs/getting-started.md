@@ -7,34 +7,39 @@ This walks through going from nothing to two devices live-syncing a shared folde
 ## Prerequisites
 
 - An Obsidian vault with **Community plugins** enabled (Settings → Community plugins → Turn on community plugins).
-- Node.js and npm, only if you're building the plugin from source (Option A below; skip if you're receiving a prebuilt `main.js`).
+- Node.js and npm, only if you're building the plugin from source (Option C below).
 - An SSH keypair and access to the relay server's host, only if you'll reach it through an SSH tunnel rather than running it locally (step 2).
 
 ## 1. Install the plugin
 
 **LANote is not published on the Obsidian Community Plugins store.** It's always a manual install, whichever way you get the build:
 
-- **Option A: build from source.**
+- **Option A: from the relay host.** Its version matches the relay:
+  ```sh
+  scp -6 -o PreferredAuthentications="publickey" -i <path/to/privatekey> -r lanote@[<relay-ip>]:/home/lanote/lanote .
+  ```
+  (Drop `-6` and the brackets for an IPv4 address.) This gives you a ready `lanote/` folder.
+- **Option B: from a [release](https://github.com/pluggero/lanote/releases).** Download `main.js`, `manifest.json`, and `styles.css`.
+- **Option C: build from source.**
   ```sh
   npm install
   npm run build   # or `npm run dev` to watch
   ```
-  This produces `main.js` at the repo root. `main.js` is gitignored; it's a build artifact, not something committed to the repo.
-- **Option B: use a prebuilt `main.js`.** If a teammate already built it, you only need the `main.js` file from them.
+  This produces `main.js` (gitignored) at the repo root.
 
-Either way, copy `manifest.json`, `main.js`, and `styles.css` into `<vault>/.obsidian/plugins/lanote/` (create the folder if it doesn't exist), then enable **LANote** under Settings → Community plugins.
+Put `manifest.json`, `main.js`, and `styles.css` in `<vault>/.obsidian/plugins/lanote/`, then enable **LANote** under Settings → Community plugins. To verify a downloaded build, see [Security model → Plugin distribution](security.md#plugin-distribution).
 
 ## 2. Reach a relay server
 
-**Run your own:**
+**Run your own:** use the published image, or from source:
 ```sh
-cd server && docker compose up -d
+docker compose up -d   # at the repo root
 ```
 See [Relay Server](server.md) for the manual/venv alternative and the full configuration reference.
 
 **Connect to someone else's remote relay server.** If it isn't directly reachable (for example it's bound to localhost on a remote host), forward it over SSH:
 ```sh
-ssh -L 4245:localhost:4245 user@host
+ssh -N -L 4245:localhost:4245 lanote@<relay-host>
 ```
 Keep that session open while syncing, and use `ws://localhost:4245` as the connection URL below. See [Security model](security.md#known-limitations) for why this matters: the relay has no built-in TLS.
 

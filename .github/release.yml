@@ -1,0 +1,13 @@
+# Categories for GitHub-generated release notes (used by release-please).
+changelog:
+  exclude:
+    labels:
+      - "autorelease: pending"
+      - "autorelease: tagged"
+  categories:
+    - title: Dependencies
+      labels:
+        - dependencies
+    - title: What's Changed
+      labels:
+        - "*"
