@@ -1,0 +1,42 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices",
+    ":disableRateLimiting"
+  ],
+  "automerge": false,
+  "automergeType": "pr",
+  "labels": ["dependencies"],
+  "packageRules": [
+    {
+      "matchManagers": ["github-actions", "pip_requirements"],
+      "automerge": true,
+      "automergeType": "pr",
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "Shipped in main.js or the image: always review",
+      "matchManagers": ["npm", "dockerfile", "nvm"],
+      "automerge": false,
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "matchDatasources": ["github-runners"],
+      "automerge": false
+    }
+  ],
+  "enabledManagers": [
+    "github-actions",
+    "dockerfile",
+    "npm",
+    "pip_requirements",
+    "nvm"
+  ],
+  "assignees": ["pluggero"],
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "minimumReleaseAge": null,
+    "automerge": false,
+    "labels": ["dependencies", "security"]
+  }
+}

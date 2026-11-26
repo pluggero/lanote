@@ -1,0 +1,17 @@
+# Allowlist: only what the Dockerfile copies.
+*
+!package.json
+!package-lock.json
+!.npmrc
+!esbuild.config.mjs
+!tsconfig.json
+!manifest.json
+!styles.css
+!src/
+!server/
+server/data/
+server/backups/
+server/.venv/
+server/venv/
+**/__pycache__/
+**/*.pyc
