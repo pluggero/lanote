@@ -15,7 +15,7 @@ FROM scratch AS plugin
 COPY --from=plugin-build /build/main.js /build/manifest.json /build/styles.css /
 
 # --- Relay server ------------------------------------------------------------
-FROM python:3.12.13-slim@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad142b1877b5830d36
+FROM python:3.15.1-slim@sha256:533b0b2f9b5d46fd097091cf826f27902f1d6c3bca714b6dc74551356aa97a51
 
 LABEL org.opencontainers.image.title="lanote" \
       org.opencontainers.image.description="LANote zero-knowledge relay server, bundling the matching Obsidian plugin" \
