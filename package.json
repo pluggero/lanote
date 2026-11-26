@@ -28,7 +28,7 @@
     "yjs": "13.6.33"
   },
   "devDependencies": {
-    "@types/node": "25.9.9",
+    "@types/node": "26.6.6",
     "esbuild": "0.28.2",
     "obsidian": "1.12.3",
     "tslib": "2.9.1",
