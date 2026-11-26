@@ -2,7 +2,9 @@
 
 Real-time collaborative note editing over your local network, with a zero-knowledge relay server: it stores and forwards encrypted bytes only, never plaintext. Your encryption key is derived on-device from a shared room code and never leaves it.
 
-Documentation: [Getting Started](docs/getting-started.md) · [Relay Server](docs/server.md) · [Security model](docs/security.md) · [Supported file types](docs/file-sync.md) · [Changelog](CHANGELOG.md)
+Documentation: [Getting Started](docs/getting-started.md) · [Relay Server](docs/server.md) · [Security model](docs/security.md) · [Supported file types](docs/file-sync.md) · [Known issues](docs/known-issues.md) · [Changelog](CHANGELOG.md)
+
+> **Known issues:** some sync bugs remain, e.g. files can revert after coming back online. Read [Known issues](docs/known-issues.md) before relying on LANote.
 
 ## Quick start
 

@@ -66,3 +66,4 @@ Open the same note from the shared folder on both devices. You should see each o
 - [Relay Server](server.md): deployment and configuration reference.
 - [Security model](security.md): threat model and known limitations.
 - [Supported file types](file-sync.md): per-file-type conflict resolution.
+- [Known issues](known-issues.md): bugs and workarounds in the current release.

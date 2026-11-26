@@ -4,6 +4,8 @@
 
 For joining a room on someone else's relay. Running your own relay or hosting a room: see [Getting Started](getting-started.md).
 
+Before you start, read the [Known issues](known-issues.md).
+
 You get from the room host:
 
 - relay-ip: `<relay-ip>`
